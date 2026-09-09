@@ -1,0 +1,21 @@
+.fi-watchlist-page { max-width: 900px; }
+.fi-watchlist-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.fi-watchlist-item {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 14px;
+}
+.fi-wl-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.fi-wl-name { font-size: 14px; font-weight: 700; color: var(--text); text-decoration: none; }
+.fi-wl-name:hover { color: var(--primary); }
+.fi-wl-remove { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; padding: 2px 6px; border-radius: 4px; }
+.fi-wl-remove:hover { background: rgba(239,68,68,.1); color: var(--danger); }
+.fi-wl-price { font-size: 20px; font-weight: 800; color: var(--text); }
+.fi-wl-change { font-size: 13px; font-weight: 600; margin-top: 2px; }
+.fi-wl-change.positive { color: var(--success); }
+.fi-wl-change.negative { color: var(--danger); }
+.fi-wl-meta { display: flex; gap: 8px; margin-top: 8px; font-size: 11px; color: var(--text-muted); text-transform: uppercase; }
+.fi-empty-state { text-align: center; padding: 60px 20px; }
+.fi-empty-icon { font-size: 40px; margin-bottom: 12px; }
+.fi-empty-state h3 { font-size: 18px; color: var(--text); margin: 0 0 8px; }
+.fi-empty-state p { color: var(--text-muted); font-size: 14px; }
+.fi-empty-state a { color: var(--primary); text-decoration: none; font-weight: 600; }

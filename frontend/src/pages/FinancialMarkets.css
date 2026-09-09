@@ -1,0 +1,17 @@
+.fi-markets-page { max-width: 1100px; }
+.fi-markets-filters { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+.fi-markets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.fi-market-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px; text-decoration: none; color: inherit; transition: border-color .15s;
+}
+.fi-market-card:hover { border-color: var(--primary); }
+.fi-market-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.fi-market-name { font-size: 13px; font-weight: 700; color: var(--text); }
+.fi-market-type { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+.fi-market-price { font-size: 22px; font-weight: 800; color: var(--text); }
+.fi-market-change { font-size: 14px; font-weight: 600; margin-top: 4px; }
+.fi-market-change.positive { color: var(--success); }
+.fi-market-change.negative { color: var(--danger); }
+.fi-market-abs { font-size: 12px; color: var(--text-muted); margin-left: 6px; }
+.fi-market-details { display: flex; gap: 10px; margin-top: 8px; font-size: 11px; color: var(--text-muted); }

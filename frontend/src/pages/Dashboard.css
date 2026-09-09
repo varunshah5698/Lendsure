@@ -1,0 +1,63 @@
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.dashboard-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.dashboard-card { margin-bottom: 0; }
+
+.risk-bars { display: flex; flex-direction: column; gap: 10px; }
+.risk-bar-row { display: grid; grid-template-columns: 70px 1fr 40px; gap: 10px; align-items: center; font-size: 13px; }
+.risk-bar-label { color: var(--text-muted); font-weight: 600; }
+.risk-bar-track { height: 8px; background: var(--bg-alt); border-radius: 99px; overflow: hidden; }
+.risk-bar-fill { height: 100%; border-radius: 99px; transition: width .5s ease; }
+.risk-bar-value { text-align: right; font-weight: 700; }
+
+/* Table */
+.table-wrap { overflow-x: auto; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.data-table th {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.data-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-light);
+  vertical-align: middle;
+}
+.data-table tr.clickable { cursor: pointer; transition: background .1s; }
+.data-table tr.clickable:hover { background: var(--bg); }
+.data-table tr:last-child td { border-bottom: none; }
+
+.borrower-cell { display: flex; align-items: center; gap: 10px; }
+.borrower-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), #06b6d4);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.borrower-name { font-weight: 600; }
+.borrower-id { font-size: 12px; color: var(--text-muted); }
+.trust-value { font-weight: 700; }
+
+@media (max-width: 1080px) { .dashboard-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 640px) { .dashboard-grid { grid-template-columns: repeat(2, 1fr); } .dashboard-row { grid-template-columns: 1fr; } }

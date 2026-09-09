@@ -1,0 +1,179 @@
+import { useState, useEffect, useCallback } from "react";
+import { useAuth } from "../context/AuthContext";
+import { useToast } from "../components/ui/Toast";
+import { admin } from "../lib/api";
+import PageHeader from "../components/layout/PageHeader";
+import Card, { CardHeader, CardTitle, CardDescription, CardContent } from "../components/ui/Card";
+import Button from "../components/ui/Button";
+import Badge from "../components/ui/Badge";
+import CopyButton from "../components/ui/CopyButton";
+import EmptyState from "../components/ui/EmptyState";
+import ErrorState from "../components/ui/ErrorState";
+import { SkeletonTable } from "../components/ui/Skeleton";
+
+export default function AdminSettings() {
+  const { session } = useAuth();
+  const toast = useToast();
+  const [keys, setKeys] = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [newKeyName, setNewKeyName] = useState("");
+  const [newKey, setNewKey] = useState(null);
+
+  const loadAll = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [k, s] = await Promise.all([admin.keys(session.token), admin.sessions(session.token)]);
+      setKeys(k);
+      setSessions(s);
+    } catch (e) { setError(e.message); }
+    finally { setLoading(false); }
+  }, [session?.token]);
+
+  useEffect(() => { loadAll(); }, [loadAll]);
+
+  const createKey = async () => {
+    if (newKeyName.trim().length < 2) return toast.error("Give the key a label");
+    try {
+      const d = await admin.createKey(newKeyName.trim(), session.token);
+      setNewKey(d.key);
+      setNewKeyName("");
+      toast.success("API key created");
+      loadAll();
+    } catch (e) { toast.error("Creation failed: " + e.message); }
+  };
+
+  const revokeKey = async (id) => {
+    try {
+      await admin.revokeKey(id, session.token);
+      toast.success("Key revoked");
+      loadAll();
+    } catch (e) { toast.error("Revocation failed: " + e.message); }
+  };
+
+  const revokeSession = async (tok, label) => {
+    if (!window.confirm(`Sign out "${label}"?`)) return;
+    try {
+      await admin.revokeSession(tok, session.token);
+      toast.success("Session revoked");
+      loadAll();
+    } catch (e) { toast.error("Revocation failed: " + e.message); }
+  };
+
+  const signOutOthers = async () => {
+    const others = sessions.filter((s) => !s.expired && s.token !== session.token);
+    if (!others.length) return;
+    if (!window.confirm(`Sign out ${others.length} other session(s)?`)) return;
+    try {
+      for (const s of others) await admin.revokeSession(s.token, session.token);
+      toast.success(`${others.length} session(s) revoked`);
+      loadAll();
+    } catch (e) { toast.error("Failed: " + e.message); }
+  };
+
+  if (loading) return <div><PageHeader title="Settings" /><SkeletonTable rows={4} cols={5} /></div>;
+  if (error) return <ErrorState message={error} />;
+
+  return (
+    <div>
+      <PageHeader
+        title="Settings"
+        description="API keys and system configuration"
+        actions={sessions.some((s) => !s.expired && s.token !== session.token) ? (
+          <Button variant="secondary" size="sm" onClick={signOutOthers}>Sign out other devices</Button>
+        ) : null}
+      />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>API Keys</CardTitle>
+          <CardDescription>Per-lender keys for programmatic access. Send as <code>X-API-Key</code> header. Full key is shown once.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="settings-key-create">
+            <input
+              type="text"
+              placeholder="Key label, e.g. field-tablet-3"
+              value={newKeyName}
+              onChange={(e) => setNewKeyName(e.target.value)}
+              className="filter-search-input"
+              style={{ maxWidth: 300 }}
+            />
+            <Button variant="primary" size="sm" onClick={createKey}>＋ Create key</Button>
+          </div>
+
+          {newKey && (
+            <div className="settings-key-once">
+              <span>New key — copy now, it won't be shown again:</span>
+              <code className="settings-key-value">{newKey}</code>
+              <CopyButton text={newKey} label="Key" />
+            </div>
+          )}
+
+          {keys.length ? (
+            <div className="table-wrap" style={{ marginTop: 12 }}>
+              <table className="data-table">
+                <thead>
+                  <tr><th>Label</th><th>Key</th><th>Created</th><th>Last used</th><th>Status</th><th></th></tr>
+                </thead>
+                <tbody>
+                  {keys.map((k) => (
+                    <tr key={k.id}>
+                      <td><b>{k.name}</b></td>
+                      <td><code style={{ fontSize: 12 }}>{k.prefix}</code></td>
+                      <td style={{ color: "var(--text-muted)", fontSize: 12 }}>{new Date(k.created_at + "Z").toLocaleDateString()}</td>
+                      <td style={{ color: "var(--text-muted)", fontSize: 12 }}>{k.last_used ? new Date(k.last_used + "Z").toLocaleString() : "—"}</td>
+                      <td>{k.revoked ? <Badge variant="HIGH">Revoked</Badge> : <Badge variant="APPROVE">Active</Badge>}</td>
+                      <td>{!k.revoked && <Button variant="ghost" size="sm" onClick={() => revokeKey(k.id)}>Revoke</Button>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState title="No keys yet" icon="🔑" description="Create an API key to access LendSure programmatically." />
+          )}
+        </CardContent>
+      </Card>
+
+      <Card style={{ marginTop: 16 }}>
+        <CardHeader>
+          <CardTitle>Active Sessions</CardTitle>
+          <CardDescription>Signed-in lenders and guests. Revoking a session signs that device out immediately.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {sessions.length ? (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr><th>User</th><th>Role</th><th>Phone</th><th>Signed in</th><th>Status</th><th></th></tr>
+                </thead>
+                <tbody>
+                  {sessions.map((s) => (
+                    <tr key={s.token}>
+                      <td><b>{s.display_name}</b> <code style={{ fontSize: 11 }}>{s.token_prefix}</code></td>
+                      <td style={{ textTransform: "capitalize" }}>{s.role}</td>
+                      <td style={{ color: "var(--text-muted)", fontSize: 12 }}>{s.phone}</td>
+                      <td style={{ color: "var(--text-muted)", fontSize: 12 }}>{new Date(s.created_at + "Z").toLocaleString()}</td>
+                      <td>{s.expired ? <Badge variant="HIGH">Expired</Badge> : <Badge variant="APPROVE">Active</Badge>}</td>
+                      <td>
+                        {!s.expired && (
+                          <Button variant="ghost" size="sm" onClick={() => revokeSession(s.token, s.display_name)}>
+                            Sign out
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState title="No sessions" icon="👤" description="No active sign-ins found." />
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

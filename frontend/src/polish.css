@@ -1,0 +1,33 @@
+/* Global beauty pass — hover lifts, focus rings, animated entrances */
+.card, .fi-summary-card, .fi-market-card, .fi-econ-card, .fi-watchlist-item,
+.lp-risk-card, .lp-pipeline-stage, .lp-scenario-card, .lp-security-item {
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+.card:hover, .fi-summary-card:hover, .fi-econ-card:hover, .fi-watchlist-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .14);
+}
+.data-table tbody tr.clickable { transition: background .12s ease; }
+.data-table tbody tr.clickable:hover { background: rgba(99, 102, 241, .06); }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.bd-metric {
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.bd-metric:hover { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(0,0,0,.13); }
+.fi-news-item, .fi-alert-item, .fi-watchlist-item { transition: transform .15s ease, border-color .15s ease; }
+.fi-news-item:hover { transform: translateX(3px); }
+@keyframes page-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.app-content > div { animation: page-in .35s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .app-content > div { animation: none; }
+  .card:hover, .fi-summary-card:hover, .fi-econ-card:hover, .fi-watchlist-item:hover,
+  .bd-metric:hover, .fi-news-item:hover { transform: none; }
+}
+@media print {
+  .sidebar, .topbar, .bd-actions, .kit-scrolltop, .lp-nav { display: none !important; }
+  .app-main { margin-left: 0 !important; }
+  body { background: #fff; }
+}

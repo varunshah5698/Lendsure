@@ -1,0 +1,29 @@
+.fi-economy-page { max-width: 1100px; }
+.fi-econ-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 28px; }
+.fi-econ-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px;
+}
+.fi-econ-card.fi-econ-warning { border-color: var(--warning); }
+.fi-econ-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); margin-bottom: 6px; }
+.fi-econ-val { font-size: 22px; font-weight: 800; color: var(--text); }
+.fi-econ-chg { font-size: 13px; font-weight: 600; margin-top: 4px; }
+.fi-econ-chg.positive { color: var(--success); }
+.fi-econ-chg.negative { color: var(--danger); }
+.fi-econ-src { font-size: 10px; color: var(--text-muted); margin-top: 6px; }
+.fi-econ-table { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.fi-econ-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1.5fr; padding: 10px 16px; border-bottom: 1px solid var(--border); font-size: 13px; }
+.fi-econ-row:last-child { border-bottom: none; }
+.fi-econ-header { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); background: var(--bg); }
+.fi-econ-name { font-weight: 600; color: var(--text); }
+.fi-econ-value { font-weight: 600; color: var(--text); }
+.fi-econ-prev { color: var(--text-muted); }
+.fi-econ-change { font-weight: 600; }
+.fi-econ-change.positive { color: var(--success); }
+.fi-econ-change.negative { color: var(--danger); }
+.fi-econ-source { color: var(--text-muted); font-size: 12px; }
+@media (max-width: 768px) {
+  .fi-econ-grid { grid-template-columns: repeat(2, 1fr); }
+  .fi-econ-row { grid-template-columns: 1.5fr 1fr 1fr; }
+  .fi-econ-row .fi-econ-prev, .fi-econ-row .fi-econ-source { display: none; }
+}

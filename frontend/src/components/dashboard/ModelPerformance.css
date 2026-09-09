@@ -1,0 +1,49 @@
+.model-header { display: flex; justify-content: space-between; align-items: flex-start; }
+.model-id { font-size: 12px; color: var(--text-muted); margin: 2px 0 0; font-family: monospace; }
+.model-status {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.model-loaded { background: var(--success-light); color: var(--success); }
+.model-offline { background: var(--danger-light); color: var(--danger); }
+
+.model-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+.model-metric {
+  background: var(--bg);
+  border-radius: var(--radius);
+  padding: 12px;
+  text-align: center;
+}
+.model-metric-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; display: block; }
+.model-metric-value { font-size: 18px; font-weight: 800; letter-spacing: -.01em; display: block; margin-top: 4px; }
+
+.model-expand {
+  background: none;
+  border: none;
+  color: var(--info);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font);
+  padding: 0;
+  margin-bottom: 12px;
+}
+.model-expand:hover { text-decoration: underline; }
+
+.model-about { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; padding: 12px; background: var(--bg); border-radius: var(--radius); }
+.model-about-item b { font-size: 12.5px; }
+.model-about-item p { font-size: 12px; color: var(--text-muted); margin: 2px 0 0; }
+
+.model-drivers { margin-top: 12px; }
+.model-drivers-title { font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin: 0 0 8px; }
+.driver-row { display: flex; align-items: center; gap: 10px; font-size: 12.5px; margin-bottom: 6px; }
+.driver-rank { color: var(--text-muted); font-weight: 700; min-width: 20px; }
+.driver-name { flex: 1; color: var(--text-secondary); }
+.driver-bar { width: 100px; height: 6px; background: var(--bg-alt); border-radius: 99px; overflow: hidden; }
+.driver-bar-fill { height: 100%; background: var(--primary); border-radius: 99px; transition: width .5s ease; }
+
+.model-meta { font-size: 12px; color: var(--text-muted); margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-light); }

@@ -1,0 +1,16 @@
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.card-hover:hover { border-color: #cbd5e1; box-shadow: var(--shadow-sm); }
+.card-none { padding: 0; }
+.card-sm { padding: 16px; }
+.card-md { padding: 20px; }
+.card-lg { padding: 24px; }
+
+.card-header { margin-bottom: 16px; }
+.card-title { font-size: 15px; font-weight: 700; margin: 0; }
+.card-desc { font-size: 13px; color: var(--text-muted); margin: 4px 0 0; }
+.card-content { font-size: 14px; }

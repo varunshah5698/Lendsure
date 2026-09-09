@@ -1,0 +1,20 @@
+.fi-alerts-page { max-width: 800px; }
+.fi-alerts-list { display: flex; flex-direction: column; gap: 2px; }
+.fi-alert-item {
+  display: flex; gap: 12px; align-items: flex-start;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 14px 16px; cursor: pointer; transition: border-color .15s;
+}
+.fi-alert-item:hover { border-color: var(--primary); }
+.fi-alert-unread { border-left: 3px solid var(--primary); }
+.fi-alert-severity { padding-top: 4px; }
+.fi-severity-dot { display: block; width: 10px; height: 10px; border-radius: 50%; }
+.fi-severity-high { background: var(--danger); }
+.fi-severity-medium { background: var(--warning); }
+.fi-severity-low { background: var(--success); }
+.fi-severity-info { background: var(--info); }
+.fi-alert-content { flex: 1; }
+.fi-alert-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.fi-alert-desc { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; }
+.fi-alert-meta { display: flex; gap: 10px; font-size: 11px; color: var(--text-muted); text-transform: uppercase; }
+.fi-alert-unread-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); margin-top: 6px; }

@@ -1,0 +1,23 @@
+# Render blueprint — deploys LendSure as one Docker web service
+# (FastAPI + SQLite + React static). Just connect the repo in Render.
+services:
+  - type: web
+    name: lendsure
+    runtime: docker
+    dockerContext: .
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      # Demo OTP shown on screen. Set to 0 + add SMTP vars for real email OTP.
+      - key: LENDSURE_DEMO_OTP
+        value: "1"
+      # Comma-separated allowed origins (same-origin serving needs none of
+      # these, but set your public URL here if you ever split frontend/API).
+      - key: LENDSURE_CORS_ORIGINS
+        value: ""
+      # Real email OTP (optional — leave empty for demo mode):
+      - key: LENDSURE_SMTP_USER
+        sync: false
+      - key: LENDSURE_SMTP_APP_PASSWORD
+        sync: false

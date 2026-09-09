@@ -1,0 +1,18 @@
+.hm { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+.hm-sector { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+.hm-sector-head { display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 10px; }
+.hm-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.hm-tile {
+  border: none; border-radius: 8px; padding: 10px; cursor: pointer; text-align: left;
+  display: flex; flex-direction: column; gap: 3px; transition: transform .12s ease, filter .12s ease;
+  color: #fff;
+}
+.hm-tile:hover { transform: scale(1.03); filter: brightness(1.1); }
+.hm-strong-up { background: linear-gradient(135deg, #059669, #047857); }
+.hm-up { background: linear-gradient(135deg, #10b981, #059669); }
+.hm-down { background: linear-gradient(135deg, #f87171, #dc2626); }
+.hm-strong-down { background: linear-gradient(135deg, #dc2626, #991b1b); }
+.hm-tile-name { font-size: 11px; font-weight: 700; opacity: .95; }
+.hm-tile-pct { font-size: 15px; font-weight: 800; }
+.tape-up { color: var(--success); font-weight: 700; }
+.tape-down { color: var(--danger); font-weight: 700; }

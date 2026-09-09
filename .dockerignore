@@ -1,0 +1,14 @@
+# Keep the image lean. NOTE: backend/lending.db and backend/models/ are
+# deliberately NOT ignored — the seeded demo DB + ML model ship in the image.
+node_modules/
+frontend/node_modules/
+frontend/dist/
+__pycache__/
+*.pyc
+*.pyo
+.env
+.env.local
+.DS_Store
+*.log
+.git/
+.vscode/

@@ -1,0 +1,15 @@
+.tape {
+  overflow: hidden; white-space: nowrap; border-radius: var(--radius);
+  background: var(--surface); border: 1px solid var(--border);
+  padding: 9px 0; margin-bottom: 18px;
+  mask-image: linear-gradient(90deg, transparent, black 4%, black 96%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, black 4%, black 96%, transparent);
+}
+.tape-track { display: inline-flex; gap: 34px; padding-left: 18px; animation: tape-scroll 40s linear infinite; }
+.tape:hover .tape-track { animation-play-state: paused; }
+@keyframes tape-scroll { to { transform: translateX(-50%); } }
+.tape-item { font-size: 12.5px; color: var(--text-muted); display: inline-flex; gap: 8px; }
+.tape-item b { color: var(--text); font-weight: 700; }
+.tape-up { color: var(--success); font-weight: 700; }
+.tape-down { color: var(--danger); font-weight: 700; }
+@media (prefers-reduced-motion: reduce) { .tape-track { animation: none; } }

@@ -1,0 +1,92 @@
+.fi-overview { max-width: 1100px; }
+.fi-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+.fi-title { font-size: 28px; font-weight: 800; color: var(--text); margin: 0; }
+.fi-subtitle { color: var(--text-muted); margin: 4px 0 0; font-size: 14px; }
+.fi-impact-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.fi-impact-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
+.fi-impact-num { font-size: 20px; font-weight: 800; color: var(--text); }
+.fi-impact-label { font-size: 11px; color: var(--text-muted); margin-top: 4px; text-transform: uppercase; letter-spacing: .04em; }
+.fi-pressure {
+  display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
+  background: var(--surface); border: 1px solid var(--border); border-left-width: 3px;
+  border-radius: var(--radius); padding: 10px 14px; margin-bottom: 8px; font-size: 13px;
+}
+.fi-pressure b { text-transform: uppercase; font-size: 11px; letter-spacing: .05em; }
+.fi-pressure span { color: var(--text-muted); }
+.fi-pressure-high { border-left-color: var(--danger); }
+.fi-pressure-high b { color: var(--danger); }
+.fi-pressure-medium { border-left-color: var(--warning); }
+.fi-pressure-medium b { color: var(--warning); }
+.fi-pressure-low { border-left-color: var(--success); }
+.fi-pressure-low b { color: var(--success); }
+.fi-ai-label { font-size: 10px; color: var(--text-muted); margin-top: 8px; font-style: italic; }
+
+.fi-summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 28px; }
+.fi-summary-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px; text-decoration: none; color: inherit; transition: border-color .15s;
+}
+.fi-summary-card:hover { border-color: var(--primary); }
+.fi-summary-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); margin-bottom: 8px; }
+.fi-summary-value { font-size: 20px; font-weight: 700; color: var(--text); }
+.fi-summary-change { font-size: 14px; font-weight: 600; margin-top: 4px; }
+.fi-summary-change.positive { color: var(--success); }
+.fi-summary-change.negative { color: var(--danger); }
+.fi-summary-detail { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+.fi-env-score { font-size: 32px; font-weight: 800; }
+.fi-env-score.positive { color: var(--success); }
+.fi-env-score.neutral { color: var(--warning); }
+.fi-env-score.negative { color: var(--danger); }
+
+.fi-section { margin-bottom: 28px; }
+.fi-section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.fi-section-title { font-size: 16px; font-weight: 700; color: var(--text); margin: 0 0 12px; text-transform: uppercase; letter-spacing: .04em; }
+.fi-link { color: var(--primary); text-decoration: none; font-size: 13px; font-weight: 600; }
+.fi-link:hover { text-decoration: underline; }
+
+.fi-ticker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.fi-ticker-item {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 14px; text-align: center;
+}
+.fi-ticker-name { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); margin-bottom: 6px; }
+.fi-ticker-price { font-size: 18px; font-weight: 700; color: var(--text); }
+.fi-ticker-change { font-size: 13px; font-weight: 600; margin-top: 4px; }
+.fi-ticker-change.positive { color: var(--success); }
+.fi-ticker-change.negative { color: var(--danger); }
+
+.fi-briefing {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 20px;
+}
+.fi-briefing-date { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
+.fi-briefing-summary { font-size: 15px; color: var(--text); line-height: 1.6; margin: 0 0 16px; }
+.fi-briefing-sections { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+.fi-briefing-section { padding: 12px; background: var(--bg); border-radius: 8px; }
+.fi-briefing-section-title { font-size: 11px; font-weight: 700; color: var(--primary); margin: 0 0 6px; }
+.fi-briefing-section p { font-size: 13px; color: var(--text-muted); margin: 0; line-height: 1.5; }
+
+.fi-news-list { display: flex; flex-direction: column; gap: 2px; }
+.fi-news-item {
+  display: block; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px; text-decoration: none; color: inherit;
+  transition: border-color .15s;
+}
+.fi-news-item:hover { border-color: var(--primary); }
+.fi-news-meta { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+.fi-news-source { font-size: 11px; font-weight: 700; color: var(--primary); text-transform: uppercase; }
+.fi-news-category { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+.fi-news-time { font-size: 11px; color: var(--text-muted); }
+.fi-news-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.fi-news-impact { font-size: 12px; color: var(--text-muted); font-style: italic; }
+.fi-news-badges { display: flex; gap: 8px; margin-top: 6px; }
+.fi-badge {
+  font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px;
+  border: 1px solid var(--border); color: var(--text-muted); text-transform: uppercase;
+}
+
+@media (max-width: 768px) {
+  .fi-summary-grid { grid-template-columns: repeat(2, 1fr); }
+  .fi-ticker-grid { grid-template-columns: repeat(2, 1fr); }
+  .fi-briefing-sections { grid-template-columns: 1fr; }
+}

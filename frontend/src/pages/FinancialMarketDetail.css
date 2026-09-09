@@ -1,0 +1,22 @@
+.fi-mdetail-page { max-width: 900px; }
+.fi-mdetail-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
+.fi-watch-btn {
+  padding: 8px 16px; border-radius: var(--radius); border: 1px solid var(--primary);
+  background: transparent; color: var(--primary); font-size: 13px; font-weight: 700; cursor: pointer;
+  white-space: nowrap;
+}
+.fi-watch-btn:hover { background: var(--primary); color: #fff; }
+.fi-mdetail-price-row { display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px; }
+.fi-mdetail-price { font-size: 34px; font-weight: 800; color: var(--text); }
+.fi-mdetail-change { font-size: 16px; font-weight: 700; }
+.fi-mdetail-change.positive { color: var(--success); }
+.fi-mdetail-change.negative { color: var(--danger); }
+.fi-mdetail-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 20px; }
+.fi-mdetail-stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; }
+.fi-mdetail-stat-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); margin-bottom: 4px; }
+.fi-mdetail-stat-value { font-size: 15px; font-weight: 700; color: var(--text); }
+.fi-mdetail-chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; margin-bottom: 24px; }
+.fi-range-row { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+.fi-chart { width: 100%; height: auto; display: block; cursor: crosshair; }
+.fi-chart-tip { margin-top: 8px; font-size: 13px; color: var(--text-muted); text-align: center; }
+@media (max-width: 768px) { .fi-mdetail-stats { grid-template-columns: repeat(2, 1fr); } .fi-mdetail-price { font-size: 26px; } }
