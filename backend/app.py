@@ -23,7 +23,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from lendsure.schema import DDL as LS_DDL
+from lendsure.schema import DDL as LS_DDL, LIFECYCLE_DDL, LS_MIGRATIONS
 
 BASE_DIR = Path(__file__).parent
 DB_PATH = BASE_DIR / "lending.db"
@@ -239,11 +239,17 @@ def init_db():
     _ls = db()
     try:
         _ls.executescript(LS_DDL)
+        _ls.executescript(LIFECYCLE_DDL)
         for _col in ("risk_factors", "fraud_signals", "trust_factors", "ml_score"):
             try:
                 _ls.execute(f"ALTER TABLE ls_analyses ADD COLUMN {_col} TEXT DEFAULT '[]'")
             except Exception:
                 pass  # column already exists
+        for _mig in LS_MIGRATIONS:
+            try:
+                _ls.execute(_mig)
+            except Exception:
+                pass  # already applied
         _ls.commit()
     finally:
         _ls.close()
@@ -254,6 +260,10 @@ init_db()
 # LendSure product API (borrowers, analysis, evidence, admin) — real DB-backed routes
 from lendsure import api as ls_api  # noqa: E402
 from lendsure import finance as fi_api  # noqa: E402
+from lendsure import loans as loan_api  # noqa: E402
+from lendsure import jobs as jobs_api  # noqa: E402
+from lendsure import graph as graph_api  # noqa: E402
+from lendsure import notify as notify_api  # noqa: E402
 
 
 def _ls_session(authorization: Optional[str]) -> Optional[dict]:
@@ -266,6 +276,19 @@ app.include_router(ls_api.router)
 fi_api.configure(db, _ls_session)
 fi_api.init_fi_db()
 app.include_router(fi_api.router)
+
+loan_api.configure(db, _ls_session)
+app.include_router(loan_api.router)
+
+jobs_api.configure(db, _ls_session)
+jobs_api.start_worker()
+app.include_router(jobs_api.router)
+
+graph_api.configure(db, _ls_session)
+app.include_router(graph_api.router)
+
+notify_api.configure(db, _ls_session)
+app.include_router(notify_api.router)
 
 # ---------------- Models ----------------
 

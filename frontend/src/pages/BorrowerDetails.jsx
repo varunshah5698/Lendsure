@@ -14,6 +14,7 @@ import Gauge from "../components/risk/Gauge";
 import CopyButton from "../components/ui/CopyButton";
 import { downloadJSON } from "../lib/export";
 import DecisionBadge from "../components/risk/DecisionBadge";
+import NetworkTab from "../components/graph/NetworkTab";
 import AuditTimeline from "../components/audit/AuditTimeline";
 import EmptyState from "../components/ui/EmptyState";
 import ErrorState from "../components/ui/ErrorState";
@@ -25,6 +26,7 @@ const TABS = [
   { key: "cashflow", label: "Cash Flow" },
   { key: "repayment", label: "Repayment" },
   { key: "documents", label: "Documents" },
+  { key: "network", label: "Network" },
   { key: "fraud", label: "Fraud & Trust" },
   { key: "explain", label: "Explainability" },
   { key: "recommend", label: "Recommendation" },
@@ -137,6 +139,19 @@ export default function BorrowerDetails() {
             } catch { /* dismissed */ }
           }}>↗ Share</Button>
           <Button variant="primary" size="sm" onClick={reRun}>↻ Re-run</Button>
+          <Button variant="primary" size="sm" onClick={async () => {
+            if (session?.role === "guest") return toast.error("Guests are read-only — sign in with Phone OTP for lender actions");
+            try {
+              const { loans } = await import("../lib/api");
+              const r = await loans.createRequest({
+                borrower_id: id, amount: borrower.requested_amount || 50000,
+                interest_rate: 12, duration_months: borrower.tenure_months || 12,
+                purpose: borrower.purpose || "",
+              }, session.token);
+              toast.success(r.duplicate ? "Draft already exists — opening it" : "Loan request drafted");
+              navigate(`/loan-requests/${r.id}`);
+            } catch (e) { toast.error("Request failed: " + e.message); }
+          }}>＋ New loan request</Button>
         </div>
       </div>
 
@@ -236,6 +251,7 @@ export default function BorrowerDetails() {
         {tab === "cashflow" && <CashFlowTab financials={financials} />}
         {tab === "repayment" && <RepaymentTab borrower={borrower} fin={fin} />}
         {tab === "documents" && <DocumentsTab borrower={borrower} bid={id} token={session.token} toast={toast} guest={session?.role === "guest"} />}
+        {tab === "network" && <NetworkTab bid={id} token={session.token} guest={session?.role === "guest"} />}
         {tab === "fraud" && <FraudTrustTab analysis={a} />}
         {tab === "explain" && <ExplainTab analysis={a} />}
         {tab === "recommend" && <RecommendTab borrower={borrower} recommendation={r} bid={id} token={session.token} toast={toast} />}
@@ -313,6 +329,7 @@ function DocumentsTab({ borrower: b, bid, token, toast, guest }) {
   const [docs, setDocs] = useState([]);
   const [newType, setNewType] = useState("identity");
   const [newFile, setNewFile] = useState("");
+  const [uploading, setUploading] = useState(false);
   const needLender = () => {
     if (guest) { toast.error("Guests are read-only — sign in with Phone OTP for lender actions"); return true; }
     return false;
@@ -358,7 +375,11 @@ function DocumentsTab({ borrower: b, bid, token, toast, guest }) {
               <small>{d.file_name} · quality {d.quality_score}/100</small>
             </div>
             <Badge variant={d.status}>{d.status.replace(/_/g, " ")}</Badge>
-            <select value={d.status} onChange={(e) => updateStatus(d.id, e.target.value)} className="doc-select">
+            <span title={`Pipeline: ${d.pipeline_status || "PENDING"} · OCR: ${d.ocr_status || "NOT_AVAILABLE"} · Scan: ${d.scan_status || "NOT_AVAILABLE"}`}
+              style={{ fontSize: 11, color: "var(--text-muted)" }}>
+              ⚙ {d.pipeline_status || "PENDING"}
+            </span>
+            <select value={d.status} onChange={(e) => updateStatus(d.id, e.target.value)} className="doc-select" disabled={guest}>
               <option>needs_review</option><option>verified</option><option>suspicious</option>
             </select>
           </div>
@@ -377,6 +398,37 @@ function DocumentsTab({ borrower: b, bid, token, toast, guest }) {
             <input type="text" placeholder="e.g. b10001_bank_statement.pdf" value={newFile} onChange={(e) => setNewFile(e.target.value)} className="filter-search-input" style={{ flex: 1 }} />
             <Button variant="secondary" size="sm" onClick={addDoc} disabled={guest} title={guest ? "Sign in with Phone OTP for lender actions" : "Register document"}>＋ Register</Button>
           </div>
+          <div className="doc-add-row" style={{ marginTop: 10 }}>
+            <label className="filter-search-input" style={{ flex: 1, cursor: guest ? "not-allowed" : "pointer", opacity: guest ? 0.5 : 1 }}>
+              {uploading ? "Uploading…" : "📎 Upload file (PDF/PNG/JPG, ≤2MB)…"}
+              <input type="file" accept=".pdf,.png,.jpg,.jpeg" disabled={guest || uploading} style={{ display: "none" }}
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  if (needLender()) return;
+                  if (f.size > 2000000) return toast.error("File exceeds 2MB cap");
+                  try {
+                    setUploading(true);
+                    const fd = new FormData();
+                    fd.append("doc_type", newType);
+                    fd.append("file", f);
+                    const r = await fetch(`/api/ls/borrowers/${bid}/documents/upload`, {
+                      method: "POST", headers: { Authorization: `Bearer ${token}` }, body: fd,
+                    });
+                    if (!r.ok) {
+                      const body = await r.json().catch(() => ({}));
+                      throw new Error(body.detail || r.statusText);
+                    }
+                    toast.success("Uploaded — verification job queued");
+                    setTimeout(loadDocs, 2500);
+                  } catch (err) { toast.error("Upload failed: " + err.message); }
+                  finally { setUploading(false); e.target.value = ""; }
+                }} />
+            </label>
+          </div>
+          <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
+            Verification runs asynchronously (see Admin → Background Jobs). OCR and malware-scan engines are not configured in this deployment — shown as NOT_AVAILABLE, never faked.
+          </p>
         </div>
       </CardContent>
     </Card>

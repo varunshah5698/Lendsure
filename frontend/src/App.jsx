@@ -11,6 +11,11 @@ import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Borrowers from "./pages/Borrowers";
 import BorrowerDetails from "./pages/BorrowerDetails";
+import LoanRequests from "./pages/LoanRequests";
+import LoanRequestDetail from "./pages/LoanRequestDetail";
+import Loans from "./pages/Loans";
+import LoanDetail from "./pages/LoanDetail";
+import Cases from "./pages/Cases";
 import FinancialOverview from "./pages/FinancialOverview";
 import FinancialNews from "./pages/FinancialNews";
 import FinancialNewsArticle from "./pages/FinancialNewsArticle";
@@ -27,6 +32,7 @@ import AdminOverview from "./pages/AdminOverview";
 import AdminApprovals from "./pages/AdminApprovals";
 import AdminPolicies from "./pages/AdminPolicies";
 import AdminSettings from "./pages/AdminSettings";
+import AdminJobs from "./pages/AdminJobs";
 import "./App.css";
 
 function RequireAuth({ children }) {
@@ -63,6 +69,11 @@ function AppLayout() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/borrowers" element={<Borrowers searchQuery={search} />} />
             <Route path="/borrower/:id" element={<BorrowerDetails />} />
+            <Route path="/loan-requests" element={<LoanRequests />} />
+            <Route path="/loan-requests/:id" element={<LoanRequestDetail />} />
+            <Route path="/loans" element={<Loans />} />
+            <Route path="/loans/:id" element={<LoanDetail />} />
+            <Route path="/cases" element={<Cases />} />
             <Route path="/financial-intelligence" element={<FinancialOverview />} />
             <Route path="/financial-intelligence/news" element={<FinancialNews />} />
             <Route path="/financial-intelligence/news/:id" element={<FinancialNewsArticle />} />
@@ -79,6 +90,7 @@ function AppLayout() {
             <Route path="/admin/model" element={<AdminModel />} />
             <Route path="/admin/policies" element={<AdminPolicies />} />
             <Route path="/admin/settings" element={<AdminSettings />} />
+            <Route path="/admin/jobs" element={<AdminJobs />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
           </ErrorBoundary>

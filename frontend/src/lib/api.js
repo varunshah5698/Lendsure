@@ -160,6 +160,70 @@ export const finance = {
   newsTicker: (token) => api("/finance/news/ticker", {}, token),
 };
 
+// Loan lifecycle
+export const loans = {
+  requests: (params = {}, token) => {
+    const q = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") q.set(k, v); });
+    const qs = q.toString();
+    return api(`/ls/loan-requests${qs ? `?${qs}` : ""}`, {}, token);
+  },
+  getRequest: (id, token) => api(`/ls/loan-requests/${id}`, {}, token),
+  createRequest: (data, token) =>
+    api("/ls/loan-requests", { method: "POST", body: JSON.stringify({ ...data, idempotency_key: data.idempotency_key || `req-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` }) }, token),
+  transition: (id, action, body = {}, token) =>
+    api(`/ls/loan-requests/${id}/${action}`, { method: "POST", body: JSON.stringify(body) }, token),
+  approve: (id, body = {}, token) =>
+    api(`/ls/loan-requests/${id}/approve`, { method: "POST", body: JSON.stringify(body) }, token),
+  list: (params = {}, token) => {
+    const q = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") q.set(k, v); });
+    const qs = q.toString();
+    return api(`/ls/loans${qs ? `?${qs}` : ""}`, {}, token);
+  },
+  get: (id, token) => api(`/ls/loans/${id}`, {}, token),
+  repay: (id, body, token) =>
+    api(`/ls/loans/${id}/repayments`, { method: "POST", body: JSON.stringify({ ...body, idempotency_key: body.idempotency_key || `pay-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` }) }, token),
+};
+
+// Graph intelligence
+export const graph = {
+  neighborhood: (bid, hops = 2, token) => api(`/ls/borrowers/${bid}/graph?hops=${hops}`, {}, token),
+  summary: (bid, token) => api(`/ls/borrowers/${bid}/network-summary`, {}, token),
+  path: (from_borrower, to_borrower, token) =>
+    api("/ls/graph/path", { method: "POST", body: JSON.stringify({ from_borrower, to_borrower }) }, token),
+  clusters: (token) => api("/ls/graph/clusters", {}, token),
+  stats: (token) => api("/ls/graph/stats", {}, token),
+};
+
+// Background jobs
+export const jobs = {
+  list: (params = {}, token) => {
+    const q = new URLSearchParams(params).toString();
+    return api(`/ls/admin/jobs${q ? `?${q}` : ""}`, {}, token);
+  },
+  retry: (id, token) => api(`/ls/admin/jobs/${id}/retry`, { method: "POST" }, token),
+};
+
+// Notifications + live stream
+export const notify = {
+  list: (token) => api("/ls/notifications", {}, token),
+  unread: (token) => api("/ls/notifications/unread-count", {}, token),
+  markRead: (id, token) => api(`/ls/notifications/${id}/read`, { method: "POST" }, token),
+  ticket: (token) => api("/ls/events/ticket", { method: "POST" }, token),
+};
+
+// Investigation cases
+export const cases = {
+  list: (params = {}, token) => {
+    const q = new URLSearchParams(params).toString();
+    return api(`/ls/cases${q ? `?${q}` : ""}`, {}, token);
+  },
+  get: (id, token) => api(`/ls/cases/${id}`, {}, token),
+  create: (data, token) => api("/ls/cases", { method: "POST", body: JSON.stringify(data) }, token),
+  resolve: (id, token) => api(`/ls/cases/${id}/resolve`, { method: "POST" }, token),
+};
+
 // Utility
 export const inr = (n) => "₹" + Number(n || 0).toLocaleString("en-IN");
 export const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));

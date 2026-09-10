@@ -5,7 +5,7 @@ import json
 from datetime import datetime
 from typing import Any, Optional
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from .engines import RecommendationEngine, emi, full_analysis
@@ -82,15 +82,19 @@ def actor_of(authorization: Optional[str], x_api_key: Optional[str] = None) -> s
 # never inline `role == ...` comparisons in endpoints.
 ROLE_PERMS = {
     "guest": {"borrower.read", "analysis.read", "analysis.run", "simulation.run",
-              "finance.read", "admin.read"},
+              "finance.read", "admin.read", "loan.read", "graph.read"},
     "lender": {"borrower.read", "borrower.create", "analysis.read", "analysis.run",
-               "simulation.run", "finance.read", "admin.read",
+               "simulation.run", "finance.read", "admin.read", "loan.read", "graph.read",
                "documents.write", "policy.update", "review.decide",
-               "keys.manage", "sessions.revoke"},
+               "keys.manage", "sessions.revoke",
+               "loan_request.create", "loan_request.decide", "repayment.record",
+               "jobs.manage", "cases.manage"},
     "service": {"borrower.read", "borrower.create", "analysis.read", "analysis.run",
-                "simulation.run", "finance.read", "admin.read",
+                "simulation.run", "finance.read", "admin.read", "loan.read", "graph.read",
                 "documents.write", "policy.update", "review.decide",
-                "keys.manage", "sessions.revoke"},
+                "keys.manage", "sessions.revoke",
+                "loan_request.create", "loan_request.decide", "repayment.record",
+                "jobs.manage", "cases.manage"},
 }
 
 
@@ -353,6 +357,22 @@ def analyze_borrower(bid: str, authorization: str | None = Header(default=None),
         b = dict(b)
         snaps = [dict(r) for r in conn.execute("SELECT * FROM ls_financials WHERE borrower_id=? ORDER BY month", (bid,))]
         docs = [dict(r) for r in conn.execute("SELECT * FROM ls_documents WHERE borrower_id=?", (bid,))]
+        # Repayment feedback loop: real recorded performance adjusts the
+        # baseline counters, so missed/on-time repayments genuinely move
+        # the next risk score (visible in the analysis + audit trail).
+        perf = conn.execute("SELECT * FROM ls_borrower_perf WHERE borrower_id=?", (bid,)).fetchone()
+        perf = dict(perf) if perf else None
+        if perf and (perf["repayments_missed"] or perf["repayments_on_time"] or perf["loans_completed"]):
+            b = dict(b)
+            b["late_payments"] = (b.get("late_payments") or 0) + (perf["repayments_missed"] or 0)
+            b["loans_repaid"] = (b.get("loans_repaid") or 0) + (perf["loans_completed"] or 0)
+            if perf["repayments_missed"]:
+                b["ontime_streak_months"] = 0
+                b["max_days_past_due"] = max(b.get("max_days_past_due") or 0, 30)
+            else:
+                b["ontime_streak_months"] = (b.get("ontime_streak_months") or 0) + (perf["repayments_on_time"] or 0)
+            b["_perf_applied"] = {"missed": perf["repayments_missed"], "on_time": perf["repayments_on_time"],
+                                  "completed": perf["loans_completed"]}
         dup = conn.execute("SELECT COUNT(*) c FROM ls_borrowers WHERE borrower_id != ? AND borrower_id IN "
                            "(SELECT borrower_id FROM ls_borrowers GROUP BY borrower_id HAVING COUNT(*)>1)",
                            (bid,)).fetchone()["c"] > 0
@@ -521,6 +541,9 @@ def add_document(bid: str, doc: DocIn, authorization: str | None = Header(defaul
         cur.execute("INSERT INTO ls_audit (borrower_id, analysis_id, actor, action, detail, created_at) VALUES (?,?,?,?,?,?)",
                     (bid, None, actor_of(authorization, x_api_key), "document_uploaded",
                      json.dumps({"doc_id": did, "type": doc.doc_type, "file": doc.file_name}), now()))
+        from .jobs import enqueue
+        enqueue(conn, "document.verify", "document", did, {"doc_id": did},
+                idempotency_key=f"docverify-{did}")
         conn.commit()
         return {"id": did, **doc.model_dump()}
     finally:
@@ -530,6 +553,75 @@ def add_document(bid: str, doc: DocIn, authorization: str | None = Header(defaul
 class DocPatch(BaseModel):
     status: Optional[str] = None
     note: Optional[str] = None
+
+
+@router.post("/borrowers/{bid}/documents/upload")
+def upload_document(bid: str, doc_type: str = Form(...), file: UploadFile = File(...),
+                    authorization: str | None = Header(default=None),
+                    x_api_key: str | None = Header(default=None)):
+    """Real file upload: bytes stored privately (lender-only reads), sha256
+    recorded, then an async verification job runs the deterministic checks.
+    2MB cap. OCR/malware-scan are NOT_AVAILABLE in this deployment and are
+    reported as such — never fabricated."""
+    from .api import require_perm as _rp  # local alias (same module)
+    _rp(authorization, x_api_key, "documents.write")
+    if doc_type not in ("identity", "bank_statement", "income_document", "salary_slip", "business_document"):
+        raise HTTPException(400, "Unknown document type")
+    data = file.file.read(2_000_001)
+    if len(data) > 2_000_000:
+        raise HTTPException(413, "File exceeds 2MB cap")
+    if not data:
+        raise HTTPException(400, "Empty file")
+    import hashlib as _hl
+    digest = _hl.sha256(data).hexdigest()
+    conn = _DB()
+    try:
+        if not conn.execute("SELECT 1 FROM ls_borrowers WHERE borrower_id=?", (bid,)).fetchone():
+            raise HTTPException(404, "Borrower not found")
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO ls_documents (borrower_id, doc_type, file_name, status, quality_score, note,"
+            " pipeline_status, content_hash, created_at) VALUES (?,?,?,?,?,?,?, ?,?)",
+            (bid, doc_type, file.filename or "upload", "needs_review", 70, "",
+             "PENDING", digest, now()))
+        did = cur.lastrowid
+        cur.execute("INSERT INTO ls_doc_files (doc_id, sha256, size_bytes, mime, data, created_at)"
+                    " VALUES (?,?,?,?,?,?)",
+                    (did, digest, len(data), file.content_type or "", data, now()))
+        cur.execute("INSERT INTO ls_audit (borrower_id, analysis_id, actor, action, detail, created_at)"
+                    " VALUES (?,?,?,?,?,?)",
+                    (bid, None, actor_of(authorization, x_api_key), "document_uploaded",
+                     json.dumps({"doc_id": did, "type": doc_type, "file": file.filename,
+                                 "sha256": digest[:16], "bytes": len(data)}), now()))
+        from .jobs import enqueue
+        jid = enqueue(conn, "document.verify", "document", did, {"doc_id": did},
+                      idempotency_key=f"docverify-{did}")
+        conn.commit()
+        return {"id": did, "sha256": digest, "bytes": len(data), "job_id": jid,
+                "pipeline": "PENDING",
+                "note": "Verification runs asynchronously; poll the document row or jobs API."}
+    finally:
+        conn.close()
+
+
+@router.get("/documents/{doc_id}/file")
+def download_document(doc_id: int, authorization: str | None = Header(default=None),
+                      x_api_key: str | None = Header(default=None)):
+    """Private document bytes — lender role only, never public."""
+    from fastapi.responses import Response as _Response
+    require_perm(authorization, x_api_key, "documents.write")
+    conn = _DB()
+    try:
+        doc = conn.execute("SELECT borrower_id, file_name FROM ls_documents WHERE id=?",
+                           (doc_id,)).fetchone()
+        f = conn.execute("SELECT * FROM ls_doc_files WHERE doc_id=?", (doc_id,)).fetchone()
+        if not doc or not f:
+            raise HTTPException(404, "File not found")
+        return _Response(content=bytes(f["data"]),
+                         media_type=f["mime"] or "application/octet-stream",
+                         headers={"Content-Disposition": f'attachment; filename="{doc["file_name"]}"'})
+    finally:
+        conn.close()
 
 
 @router.patch("/documents/{doc_id}")

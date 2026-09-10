@@ -107,6 +107,151 @@ CREATE TABLE IF NOT EXISTS ls_api_keys (
 );
 """
 
+# ---- Loan lifecycle, repayments, jobs, notifications, events, cases, perf ----
+# Appended after the core DDL; all CREATE TABLE IF NOT EXISTS so boot-time
+# execution is a safe migration on existing databases.
+LIFECYCLE_DDL = """
+CREATE TABLE IF NOT EXISTS ls_loan_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    borrower_id TEXT NOT NULL,
+    analysis_id INTEGER,
+    amount REAL NOT NULL CHECK (amount > 0),
+    interest_rate REAL NOT NULL CHECK (interest_rate >= 0 AND interest_rate <= 60),
+    duration_months INTEGER NOT NULL CHECK (duration_months >= 1 AND duration_months <= 84),
+    purpose TEXT DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'DRAFT',
+    idempotency_key TEXT UNIQUE,
+    requested_by TEXT DEFAULT '',
+    reviewer TEXT DEFAULT '',
+    review_note TEXT DEFAULT '',
+    decided_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_lr_b ON ls_loan_requests (borrower_id);
+CREATE INDEX IF NOT EXISTS idx_lr_s ON ls_loan_requests (status);
+CREATE TABLE IF NOT EXISTS ls_loans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id INTEGER NOT NULL UNIQUE,
+    borrower_id TEXT NOT NULL,
+    principal REAL NOT NULL,
+    interest_rate REAL NOT NULL,
+    duration_months INTEGER NOT NULL,
+    emi REAL NOT NULL,
+    disbursed_at TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'ACTIVE',
+    outstanding_principal REAL NOT NULL,
+    total_paid REAL NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ln_b ON ls_loans (borrower_id);
+CREATE TABLE IF NOT EXISTS ls_schedule (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    loan_id INTEGER NOT NULL,
+    n INTEGER NOT NULL,
+    due_date TEXT NOT NULL,
+    principal REAL NOT NULL,
+    interest REAL NOT NULL,
+    total_due REAL NOT NULL,
+    paid REAL NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'UPCOMING',
+    paid_at TEXT,
+    UNIQUE (loan_id, n)
+);
+CREATE INDEX IF NOT EXISTS idx_sch_l ON ls_schedule (loan_id);
+CREATE TABLE IF NOT EXISTS ls_repayments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    loan_id INTEGER NOT NULL,
+    schedule_id INTEGER,
+    amount REAL NOT NULL CHECK (amount > 0),
+    method TEXT DEFAULT 'manual',
+    idempotency_key TEXT UNIQUE,
+    recorded_by TEXT DEFAULT '',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_rep_l ON ls_repayments (loan_id);
+CREATE TABLE IF NOT EXISTS ls_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL,
+    ref_type TEXT DEFAULT '',
+    ref_id TEXT DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'PENDING',
+    attempts INTEGER DEFAULT 0,
+    max_attempts INTEGER DEFAULT 3,
+    payload TEXT DEFAULT '{}',
+    result TEXT DEFAULT '',
+    error TEXT DEFAULT '',
+    idempotency_key TEXT UNIQUE,
+    created_at TEXT NOT NULL,
+    started_at TEXT,
+    finished_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_job_s ON ls_jobs (status);
+CREATE TABLE IF NOT EXISTS ls_notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    audience TEXT NOT NULL DEFAULT 'role:lender',
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT DEFAULT '',
+    link TEXT DEFAULT '',
+    is_read INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_not_a ON ls_notifications (audience, is_read);
+CREATE TABLE IF NOT EXISTS ls_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL,
+    entity TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    actor TEXT DEFAULT '',
+    data TEXT DEFAULT '{}',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ev_e ON ls_events (entity, entity_id);
+CREATE INDEX IF NOT EXISTS idx_ev_t ON ls_events (created_at);
+CREATE TABLE IF NOT EXISTS ls_cases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'investigation',
+    status TEXT NOT NULL DEFAULT 'OPEN',
+    borrower_id TEXT DEFAULT '',
+    evidence TEXT DEFAULT '{}',
+    created_by TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    resolved_at TEXT
+);
+CREATE TABLE IF NOT EXISTS ls_borrower_perf (
+    borrower_id TEXT PRIMARY KEY,
+    loans_completed INTEGER DEFAULT 0,
+    repayments_on_time INTEGER DEFAULT 0,
+    repayments_missed INTEGER DEFAULT 0,
+    amount_repaid REAL DEFAULT 0,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ls_doc_files (
+    doc_id INTEGER PRIMARY KEY,
+    sha256 TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    mime TEXT DEFAULT '',
+    data BLOB,
+    created_at TEXT NOT NULL
+);
+"""
+
+# Column migrations for existing tables (each applied once, failures ignored).
+LS_MIGRATIONS = [
+    "ALTER TABLE ls_borrowers ADD COLUMN phone TEXT DEFAULT ''",
+    "ALTER TABLE ls_borrowers ADD COLUMN email TEXT DEFAULT ''",
+    "ALTER TABLE ls_borrowers ADD COLUMN address_line TEXT DEFAULT ''",
+    "ALTER TABLE ls_borrowers ADD COLUMN device_id TEXT DEFAULT ''",
+    "ALTER TABLE ls_borrowers ADD COLUMN bank_account TEXT DEFAULT ''",
+    "ALTER TABLE ls_documents ADD COLUMN pipeline_status TEXT DEFAULT 'PENDING'",
+    "ALTER TABLE ls_documents ADD COLUMN pipeline_evidence TEXT DEFAULT '[]'",
+    "ALTER TABLE ls_documents ADD COLUMN ocr_status TEXT DEFAULT 'NOT_AVAILABLE'",
+    "ALTER TABLE ls_documents ADD COLUMN scan_status TEXT DEFAULT 'NOT_AVAILABLE'",
+    "ALTER TABLE ls_documents ADD COLUMN content_hash TEXT DEFAULT ''",
+]
+
 DEFAULT_CONFIG = {
     "model_version": MODEL_VERSION,
     "risk_low_max": 35,

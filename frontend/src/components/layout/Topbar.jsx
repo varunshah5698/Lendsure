@@ -1,9 +1,13 @@
 import { useLocation, useNavigate } from "react-router-dom";
+import NotificationBell from "./NotificationBell";
 import "./Topbar.css";
 
 const BREADCRUMB_MAP = {
   "/dashboard": ["Dashboard"],
   "/borrowers": ["Borrowers"],
+  "/loan-requests": ["Lending", "Loan Requests"],
+  "/loans": ["Lending", "Loans"],
+  "/cases": ["Lending", "Cases"],
   "/financial-intelligence": ["Financial Intelligence", "Overview"],
   "/financial-intelligence/news": ["Financial Intelligence", "Live News"],
   "/financial-intelligence/markets": ["Financial Intelligence", "Markets"],
@@ -27,6 +31,8 @@ export default function Topbar({ searchQuery, onSearchChange }) {
   const getBreadcrumb = () => {
     const path = location.pathname;
     if (path.startsWith("/borrower/")) return ["Borrowers", "Borrower Details"];
+    if (path.startsWith("/loan-requests/")) return ["Lending", "Loan Request"];
+    if (path.startsWith("/loans/")) return ["Lending", "Loan Details"];
     if (path.startsWith("/financial-intelligence/news/")) return ["Financial Intelligence", "Article"];
     if (path.startsWith("/financial-intelligence/markets/")) return ["Financial Intelligence", "Asset Details"];
     return BREADCRUMB_MAP[path] || ["Dashboard"];
@@ -52,6 +58,7 @@ export default function Topbar({ searchQuery, onSearchChange }) {
         </nav>
       </div>
       <div className="topbar-right">
+        <NotificationBell />
         <div className="topbar-search">
           <svg className="topbar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" />

@@ -8,6 +8,11 @@ const NAV = [
     { label: "Dashboard", path: "/dashboard", icon: "📊" },
     { label: "Borrowers", path: "/borrowers", icon: "👥" },
   ]},
+  { section: "Lending", items: [
+    { label: "Loan Requests", path: "/loan-requests", icon: "📝" },
+    { label: "Loans", path: "/loans", icon: "💰" },
+    { label: "Cases", path: "/cases", icon: "📁" },
+  ]},
   { section: "Financial Intelligence", items: [
     { label: "Overview", path: "/financial-intelligence", icon: "🌐" },
     { label: "Live News", path: "/financial-intelligence/news", icon: "📰" },
@@ -20,6 +25,7 @@ const NAV = [
   { section: "Governance", items: [
     { label: "Admin Overview", path: "/admin/overview", icon: "🛡" },
     { label: "Approvals", path: "/admin/approvals", icon: "✅" },
+    { label: "Background Jobs", path: "/admin/jobs", icon: "⚙️" },
     { label: "Security Center", path: "/security", icon: "🔒" },
     { label: "Model Performance", path: "/admin/model", icon: "🤖" },
     { label: "Risk Policies", path: "/admin/policies", icon: "⚙" },
