@@ -47,6 +47,25 @@ def verification_bucket(b: dict, docs: list[dict]) -> str:
     return "needs_review"
 
 
+def merge_perf(conn, bid: str, b: dict) -> dict:
+    """Fold recorded repayment performance into analysis input (shared by the
+    analyze endpoint and the simulator so both apply the identical feedback)."""
+    perf = conn.execute("SELECT * FROM ls_borrower_perf WHERE borrower_id=?", (bid,)).fetchone()
+    perf = dict(perf) if perf else None
+    if perf and (perf["repayments_missed"] or perf["repayments_on_time"] or perf["loans_completed"]):
+        b = dict(b)
+        b["late_payments"] = (b.get("late_payments") or 0) + (perf["repayments_missed"] or 0)
+        b["loans_repaid"] = (b.get("loans_repaid") or 0) + (perf["loans_completed"] or 0)
+        if perf["repayments_missed"]:
+            b["ontime_streak_months"] = 0
+            b["max_days_past_due"] = max(b.get("max_days_past_due") or 0, 30)
+        else:
+            b["ontime_streak_months"] = (b.get("ontime_streak_months") or 0) + (perf["repayments_on_time"] or 0)
+        b["_perf_applied"] = {"missed": perf["repayments_missed"], "on_time": perf["repayments_on_time"],
+                              "completed": perf["loans_completed"]}
+    return b
+
+
 def latest_analyses(conn) -> dict:
     out = {}
     for r in conn.execute(
@@ -360,24 +379,18 @@ def analyze_borrower(bid: str, authorization: str | None = Header(default=None),
         # Repayment feedback loop: real recorded performance adjusts the
         # baseline counters, so missed/on-time repayments genuinely move
         # the next risk score (visible in the analysis + audit trail).
-        perf = conn.execute("SELECT * FROM ls_borrower_perf WHERE borrower_id=?", (bid,)).fetchone()
-        perf = dict(perf) if perf else None
-        if perf and (perf["repayments_missed"] or perf["repayments_on_time"] or perf["loans_completed"]):
-            b = dict(b)
-            b["late_payments"] = (b.get("late_payments") or 0) + (perf["repayments_missed"] or 0)
-            b["loans_repaid"] = (b.get("loans_repaid") or 0) + (perf["loans_completed"] or 0)
-            if perf["repayments_missed"]:
-                b["ontime_streak_months"] = 0
-                b["max_days_past_due"] = max(b.get("max_days_past_due") or 0, 30)
-            else:
-                b["ontime_streak_months"] = (b.get("ontime_streak_months") or 0) + (perf["repayments_on_time"] or 0)
-            b["_perf_applied"] = {"missed": perf["repayments_missed"], "on_time": perf["repayments_on_time"],
-                                  "completed": perf["loans_completed"]}
+        b = merge_perf(conn, bid, b)
         dup = conn.execute("SELECT COUNT(*) c FROM ls_borrowers WHERE borrower_id != ? AND borrower_id IN "
                            "(SELECT borrower_id FROM ls_borrowers GROUP BY borrower_id HAVING COUNT(*)>1)",
                            (bid,)).fetchone()["c"] > 0
         res = full_analysis(b, snaps, docs, dup, cfg_all(conn))
         aid = _persist_analysis(conn, bid, res, actor_of(authorization, x_api_key))
+        try:
+            from .intel import log_prediction
+            log_prediction(conn, bid, aid, res.get("model_version", ""), res.get("ml_proba"))
+            conn.commit()
+        except Exception:
+            pass
         return {"analysis_id": aid, **{k: v for k, v in res.items() if k != "input_snapshot"}}
     finally:
         conn.close()

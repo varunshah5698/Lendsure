@@ -8,6 +8,8 @@ const BREADCRUMB_MAP = {
   "/loan-requests": ["Lending", "Loan Requests"],
   "/loans": ["Lending", "Loans"],
   "/cases": ["Lending", "Cases"],
+  "/copilot": ["Overview", "Copilot"],
+  "/simulations": ["Lending", "Simulations"],
   "/financial-intelligence": ["Financial Intelligence", "Overview"],
   "/financial-intelligence/news": ["Financial Intelligence", "Live News"],
   "/financial-intelligence/markets": ["Financial Intelligence", "Markets"],

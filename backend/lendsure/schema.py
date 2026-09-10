@@ -236,6 +236,15 @@ CREATE TABLE IF NOT EXISTS ls_doc_files (
     data BLOB,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS ls_predictions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    borrower_id TEXT NOT NULL,
+    analysis_id INTEGER,
+    model_id TEXT NOT NULL,
+    proba REAL NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pred_t ON ls_predictions (created_at);
 """
 
 # Column migrations for existing tables (each applied once, failures ignored).

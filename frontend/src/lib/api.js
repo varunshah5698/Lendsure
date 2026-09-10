@@ -224,6 +224,29 @@ export const cases = {
   resolve: (id, token) => api(`/ls/cases/${id}/resolve`, { method: "POST" }, token),
 };
 
+// Intelligence: health, monitoring, history, warnings, portfolio
+export const intel = {
+  health: (part, token) => api(`/api/health/${part}`, {}, token),
+  monitoring: (token) => api("/api/ls/admin/model/monitoring", {}, token),
+  riskHistory: (bid, token) => api(`/ls/borrowers/${bid}/risk-history`, {}, token),
+  warnings: (token) => api("/ls/intel/warnings", {}, token),
+  portfolio: (token) => api("/ls/intel/portfolio", {}, token),
+};
+
+// Copilot (deterministic analyst over live records)
+export const copilot = {
+  ask: (question, token) =>
+    api("/ls/copilot/ask", { method: "POST", body: JSON.stringify({ question }) }, token),
+};
+
+// Simulation center
+export const sim = {
+  scenarios: (token) => api("/ls/admin/simulate/scenarios", {}, token),
+  run: (scenario, token) =>
+    api("/ls/admin/simulate/scenario", { method: "POST", body: JSON.stringify({ scenario }) }, token),
+  cleanup: (token) => api("/ls/admin/simulate/cleanup", { method: "POST" }, token),
+};
+
 // Utility
 export const inr = (n) => "₹" + Number(n || 0).toLocaleString("en-IN");
 export const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));

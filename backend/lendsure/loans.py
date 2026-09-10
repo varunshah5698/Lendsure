@@ -452,40 +452,48 @@ def approve_request(rid: int, body: ApproveIn, authorization: Optional[str] = He
         months = body.duration_months or req["duration_months"]
         if not (0 < amount <= 100_000_00 and 0 <= rate <= 60 and 1 <= months <= 84):
             raise HTTPException(422, "Adjusted terms out of bounds")
-        req = _transition(conn, req, "approve", actor, body.note)
-        payment = emi(amount, rate, months)
-        disb = today()
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO ls_loans (request_id,borrower_id,principal,interest_rate,duration_months,"
-            "emi,disbursed_at,status,outstanding_principal,total_paid,created_at)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (rid, req["borrower_id"], amount, rate, months, payment, disb, "ACTIVE",
-             round(amount, 2), 0.0, now()))
-        loan_id = cur.lastrowid
-        for s in build_schedule(amount, rate, months, disb):
-            cur.execute(
-                "INSERT INTO ls_schedule (loan_id,n,due_date,principal,interest,total_due) VALUES (?,?,?,?,?,?)",
-                (loan_id, s["n"], s["due_date"], s["principal"], s["interest"], s["total_due"]))
-        conn.execute("UPDATE ls_loan_requests SET reviewer=?, review_note=?, decided_at=?,"
-                     " amount=?, interest_rate=?, duration_months=? WHERE id=?",
-                     (actor, body.note, now(), amount, rate, months, rid))
-        from .notify import emit, audit
-        emit(conn, "LoanCreated", "loan", loan_id, actor,
-             {"request_id": rid, "borrower_id": req["borrower_id"], "principal": amount,
-              "emi": payment, "months": months})
-        audit(conn, req["borrower_id"], req.get("analysis_id"), actor, "loan_approved_disbursed",
-              {"request_id": rid, "loan_id": loan_id, "principal": amount, "rate": rate,
-               "months": months, "emi": payment, "note": body.note})
-        _notify_both(conn, "loan_approved", f"Loan #{loan_id} approved & disbursed",
-                     f"₹{amount:,.0f} @ {rate}% × {months}m — EMI ₹{payment:,.0f} for {req['borrower_id']}.",
-                     f"/loans/{loan_id}")
+        req, loan_id, payment = _approve_txn(conn, req, amount, rate, months, body.note, actor)
         conn.commit()
         loan = refresh_loan_state(conn, loan_id, actor)
         return {"request": dict(conn.execute("SELECT * FROM ls_loan_requests WHERE id=?", (rid,)).fetchone()),
                 "loan": loan}
     finally:
         conn.close()
+
+
+def _approve_txn(conn, req: dict, amount: float, rate: float, months: int,
+                 note: str, actor: str, disbursed_on: str | None = None) -> tuple[dict, int, float]:
+    """Shared approve-and-disburse transaction (endpoint + simulator).
+    disbursed_on backdating is simulator-only and always SIM-flagged."""
+    from .notify import emit, audit
+    req = _transition(conn, req, "approve", actor, note)
+    payment = emi(amount, rate, months)
+    disb = disbursed_on or today()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO ls_loans (request_id,borrower_id,principal,interest_rate,duration_months,"
+        "emi,disbursed_at,status,outstanding_principal,total_paid,created_at)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        (req["id"], req["borrower_id"], amount, rate, months, payment, disb, "ACTIVE",
+         round(amount, 2), 0.0, now()))
+    loan_id = cur.lastrowid
+    for s in build_schedule(amount, rate, months, disb):
+        cur.execute(
+            "INSERT INTO ls_schedule (loan_id,n,due_date,principal,interest,total_due) VALUES (?,?,?,?,?,?)",
+            (loan_id, s["n"], s["due_date"], s["principal"], s["interest"], s["total_due"]))
+    conn.execute("UPDATE ls_loan_requests SET reviewer=?, review_note=?, decided_at=?,"
+                 " amount=?, interest_rate=?, duration_months=? WHERE id=?",
+                 (actor, note, now(), amount, rate, months, req["id"]))
+    emit(conn, "LoanCreated", "loan", loan_id, actor,
+         {"request_id": req["id"], "borrower_id": req["borrower_id"], "principal": amount,
+          "emi": payment, "months": months})
+    audit(conn, req["borrower_id"], req.get("analysis_id"), actor, "loan_approved_disbursed",
+          {"request_id": req["id"], "loan_id": loan_id, "principal": amount, "rate": rate,
+           "months": months, "emi": payment, "note": note})
+    _notify_both(conn, "loan_approved", f"Loan #{loan_id} approved & disbursed",
+                 f"₹{amount:,.0f} @ {rate}% × {months}m — EMI ₹{payment:,.0f} for {req['borrower_id']}.",
+                 f"/loans/{loan_id}")
+    return req, loan_id, payment
 
 
 # ── loans & repayments ──

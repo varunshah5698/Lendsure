@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ToastProvider } from "./components/ui/Toast";
 import Sidebar from "./components/layout/Sidebar";
 import Topbar from "./components/layout/Topbar";
+import CommandPalette from "./components/layout/CommandPalette";
 import ScrollTop from "./components/ui/ScrollTop";
 import ErrorBoundary from "./components/ui/ErrorBoundary";
 import Landing from "./pages/Landing";
@@ -16,6 +17,8 @@ import LoanRequestDetail from "./pages/LoanRequestDetail";
 import Loans from "./pages/Loans";
 import LoanDetail from "./pages/LoanDetail";
 import Cases from "./pages/Cases";
+import Copilot from "./pages/Copilot";
+import Simulations from "./pages/Simulations";
 import FinancialOverview from "./pages/FinancialOverview";
 import FinancialNews from "./pages/FinancialNews";
 import FinancialNewsArticle from "./pages/FinancialNewsArticle";
@@ -74,6 +77,8 @@ function AppLayout() {
             <Route path="/loans" element={<Loans />} />
             <Route path="/loans/:id" element={<LoanDetail />} />
             <Route path="/cases" element={<Cases />} />
+            <Route path="/copilot" element={<Copilot />} />
+            <Route path="/simulations" element={<Simulations />} />
             <Route path="/financial-intelligence" element={<FinancialOverview />} />
             <Route path="/financial-intelligence/news" element={<FinancialNews />} />
             <Route path="/financial-intelligence/news/:id" element={<FinancialNewsArticle />} />
@@ -96,6 +101,7 @@ function AppLayout() {
           </ErrorBoundary>
         </div>
         <ScrollTop />
+        <CommandPalette />
       </div>
     </div>
   );

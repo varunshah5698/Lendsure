@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../components/ui/Toast";
 import { borrowers, documents, simulation, inr } from "../lib/api";
+import { intel } from "../lib/api";
 import PageHeader from "../components/layout/PageHeader";
 import Tabs from "../components/ui/Tabs";
 import Button from "../components/ui/Button";
@@ -47,6 +48,7 @@ export default function BorrowerDetails() {
   const [error, setError] = useState(null);
   const [evidence, setEvidence] = useState(null);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
+  const [changed, setChanged] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -60,6 +62,7 @@ export default function BorrowerDetails() {
       setBorrower(b);
       setFinancials(snaps);
       setAnalysis(a);
+      intel.riskHistory(id, session.token).then((h) => setChanged(h.what_changed)).catch(() => {});
     } catch (e) {
       setError(e.message);
     } finally {
@@ -237,8 +240,7 @@ export default function BorrowerDetails() {
             </Card>
 
             <Card>
-              <CardHeader><CardTitle>Current Recommendation</CardTitle><CardDescription>{r?.rationale}</CardDescription></CardHeader>
-              <CardContent>
+              <CardHeader><CardTitle>Current Recommendation</CardTitle><CardDescription>{r?.rationale}</CardDescription></CardHeader>              <CardContent>
                 <div className="bd-rec-amount">{inr(r?.recommended_amount)}</div>
                 <p className="bd-rec-detail">@ {r?.interest_rate}% · {r?.duration_months} mo · EMI <b>{inr(r?.monthly_payment)}</b></p>
                 <DecisionBadge decision={r?.decision} />
@@ -246,6 +248,25 @@ export default function BorrowerDetails() {
               </CardContent>
             </Card>
           </div>
+        )}
+        {tab === "overview" && changed && (
+          <Card style={{ marginTop: 16 }}>
+            <CardHeader>
+              <CardTitle>What changed?</CardTitle>
+              <CardDescription>
+                Analysis #{changed.from_analysis} → #{changed.to_analysis} · risk {changed.risk.before} → {changed.risk.after} ({changed.risk.delta >= 0 ? "+" : ""}{changed.risk.delta})
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {(changed.top_factor_moves || []).map((f) => (
+                <div key={f.code} className="audit-row">
+                  <div><b>{f.title}</b> <span style={{ color: "var(--text-muted)" }}>{f.before} → {f.after}</span></div>
+                  <b style={{ color: f.delta > 0 ? "var(--danger)" : "var(--success)" }}>{f.delta > 0 ? "+" : ""}{f.delta}</b>
+                </div>
+              ))}
+              {!(changed.top_factor_moves || []).length && <p style={{ fontSize: 13, color: "var(--text-muted)" }}>No material factor moves between the last two analyses.</p>}
+            </CardContent>
+          </Card>
         )}
 
         {tab === "cashflow" && <CashFlowTab financials={financials} />}
@@ -330,6 +351,9 @@ function DocumentsTab({ borrower: b, bid, token, toast, guest }) {
   const [newType, setNewType] = useState("identity");
   const [newFile, setNewFile] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [viewing, setViewing] = useState(null);
+  const [zoom, setZoom] = useState(1);
+  const [rot, setRot] = useState(0);
   const needLender = () => {
     if (guest) { toast.error("Guests are read-only — sign in with Phone OTP for lender actions"); return true; }
     return false;
@@ -361,9 +385,31 @@ function DocumentsTab({ borrower: b, bid, token, toast, guest }) {
     } catch (e) { toast.error("Update failed: " + e.message); loadDocs(); }
   };
 
+  const viewDoc = async (d) => {
+    try {
+      const r = await fetch(`/api/ls/documents/${d.id}/file`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw new Error(body.detail || r.statusText);
+      }
+      const blob = await r.blob();
+      setZoom(1);
+      setRot(0);
+      setViewing({ url: URL.createObjectURL(blob), mime: blob.type, name: d.file_name });
+    } catch (e) { toast.error("Cannot open file: " + e.message); }
+  };
+
+  const closeViewer = () => {
+    if (viewing?.url) URL.revokeObjectURL(viewing.url);
+    setViewing(null);
+  };
+
   const ico = { identity: "🪪", bank_statement: "🏦", income_document: "🧾", salary_slip: "💼", business_document: "🏪" };
 
   return (
+    <>
     <Card>
       <CardHeader><CardTitle>Document Center</CardTitle><CardDescription>Verification derived from structured checks</CardDescription></CardHeader>
       <CardContent>
@@ -382,6 +428,7 @@ function DocumentsTab({ borrower: b, bid, token, toast, guest }) {
             <select value={d.status} onChange={(e) => updateStatus(d.id, e.target.value)} className="doc-select" disabled={guest}>
               <option>needs_review</option><option>verified</option><option>suspicious</option>
             </select>
+            <Button variant="ghost" size="sm" onClick={() => viewDoc(d)}>View</Button>
           </div>
         )) : <EmptyState title="No documents on file" icon="📄" />}
 
@@ -432,6 +479,31 @@ function DocumentsTab({ borrower: b, bid, token, toast, guest }) {
         </div>
       </CardContent>
     </Card>
+    {viewing && (
+      <div className="modal-overlay" onClick={closeViewer}>
+        <div className="modal-box" style={{ maxWidth: 860 }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal-head">
+            <b>{viewing.name}</b>
+            <span style={{ display: "flex", gap: 6 }}>
+              <Button variant="ghost" size="sm" onClick={() => setZoom((z) => Math.min(3, +(z + 0.25).toFixed(2)))}>＋ Zoom</Button>
+              <Button variant="ghost" size="sm" onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.25).toFixed(2)))}>－ Zoom</Button>
+              <Button variant="ghost" size="sm" onClick={() => setRot((r) => (r + 90) % 360)}>⟳ Rotate</Button>
+              <Button variant="ghost" size="sm" onClick={closeViewer}>✕ Close</Button>
+            </span>
+          </div>
+          <div style={{ overflow: "auto", maxHeight: "70vh", display: "flex", justifyContent: "center", background: "rgba(0,0,0,.35)", borderRadius: 8 }}>
+            {viewing.mime.startsWith("image/") ? (
+              <img src={viewing.url} alt={viewing.name} style={{ transform: `scale(${zoom}) rotate(${rot}deg)`, maxWidth: "100%", transition: "transform .15s" }} />
+            ) : viewing.mime === "application/pdf" ? (
+              <iframe src={viewing.url} title={viewing.name} style={{ width: "100%", height: "70vh", border: "none" }} />
+            ) : (
+              <p style={{ padding: 24, fontSize: 13 }}>Preview not available for {viewing.mime || "this file type"} — use download.</p>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 

@@ -7,11 +7,13 @@ const NAV = [
   { section: "Overview", items: [
     { label: "Dashboard", path: "/dashboard", icon: "📊" },
     { label: "Borrowers", path: "/borrowers", icon: "👥" },
+    { label: "Copilot", path: "/copilot", icon: "🧠" },
   ]},
   { section: "Lending", items: [
     { label: "Loan Requests", path: "/loan-requests", icon: "📝" },
     { label: "Loans", path: "/loans", icon: "💰" },
     { label: "Cases", path: "/cases", icon: "📁" },
+    { label: "Simulations", path: "/simulations", icon: "🧪" },
   ]},
   { section: "Financial Intelligence", items: [
     { label: "Overview", path: "/financial-intelligence", icon: "🌐" },

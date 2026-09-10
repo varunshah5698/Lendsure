@@ -151,7 +151,7 @@ export default function Borrowers({ searchQuery = "" }) {
                     <td>
                       <div className="borrower-cell">
                         <Avatar name={r.name} />
-                        <div><div className="borrower-name">{r.name}</div><div className="borrower-id">{r.borrower_id}</div></div>
+                        <div><div className="borrower-name">{r.name}{String(r.borrower_id).startsWith("SIM-") && <span title="Simulation record — excluded from portfolio metrics" style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: "#22d3ee", border: "1px solid rgba(34,211,238,.5)", borderRadius: 4, padding: "1px 5px" }}>SIMULATION</span>}</div><div className="borrower-id">{r.borrower_id}</div></div>
                       </div>
                     </td>
                     <td>{r.age}</td>
