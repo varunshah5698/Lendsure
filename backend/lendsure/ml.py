@@ -14,7 +14,7 @@ MODELS = BASE / "models"
 ARTIFACT = MODELS / "risk_model.joblib"
 METRICS = MODELS / "metrics.json"
 
-MODEL_ID = "lendsure-ml-v3.1"
+MODEL_ID = "lendsure-ml-v3.2"
 
 try:
     from data_gen import FEATURES  # noqa: F401

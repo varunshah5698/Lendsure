@@ -235,7 +235,7 @@ export default function BorrowerDetails() {
 
         {tab === "cashflow" && <CashFlowTab financials={financials} />}
         {tab === "repayment" && <RepaymentTab borrower={borrower} fin={fin} />}
-        {tab === "documents" && <DocumentsTab borrower={borrower} bid={id} token={session.token} toast={toast} />}
+        {tab === "documents" && <DocumentsTab borrower={borrower} bid={id} token={session.token} toast={toast} guest={session?.role === "guest"} />}
         {tab === "fraud" && <FraudTrustTab analysis={a} />}
         {tab === "explain" && <ExplainTab analysis={a} />}
         {tab === "recommend" && <RecommendTab borrower={borrower} recommendation={r} bid={id} token={session.token} toast={toast} />}
@@ -309,10 +309,14 @@ function RepaymentTab({ borrower: b, fin }) {
   );
 }
 
-function DocumentsTab({ borrower: b, bid, token, toast }) {
+function DocumentsTab({ borrower: b, bid, token, toast, guest }) {
   const [docs, setDocs] = useState([]);
   const [newType, setNewType] = useState("identity");
   const [newFile, setNewFile] = useState("");
+  const needLender = () => {
+    if (guest) { toast.error("Guests are read-only — sign in with Phone OTP for lender actions"); return true; }
+    return false;
+  };
 
   const loadDocs = useCallback(async () => {
     try { setDocs(await documents.list(bid, token)); } catch {}
@@ -321,17 +325,23 @@ function DocumentsTab({ borrower: b, bid, token, toast }) {
   useEffect(() => { loadDocs(); }, [loadDocs]);
 
   const addDoc = async () => {
+    if (needLender()) return;
     if (!newFile.trim()) return toast.error("Enter a file name");
-    await documents.create(bid, { doc_type: newType, file_name: newFile.trim() }, token);
-    toast.success("Document registered");
-    setNewFile("");
-    loadDocs();
+    try {
+      await documents.create(bid, { doc_type: newType, file_name: newFile.trim() }, token);
+      toast.success("Document registered");
+      setNewFile("");
+      loadDocs();
+    } catch (e) { toast.error("Register failed: " + e.message); }
   };
 
   const updateStatus = async (docId, status) => {
-    await documents.patch(docId, { status }, token);
-    toast.success("Document status updated");
-    loadDocs();
+    if (needLender()) { loadDocs(); return; }
+    try {
+      await documents.patch(docId, { status }, token);
+      toast.success("Document status updated");
+      loadDocs();
+    } catch (e) { toast.error("Update failed: " + e.message); loadDocs(); }
   };
 
   const ico = { identity: "🪪", bank_statement: "🏦", income_document: "🧾", salary_slip: "💼", business_document: "🏪" };
@@ -365,7 +375,7 @@ function DocumentsTab({ borrower: b, bid, token, toast }) {
               <option value="business_document">Business document</option>
             </select>
             <input type="text" placeholder="e.g. b10001_bank_statement.pdf" value={newFile} onChange={(e) => setNewFile(e.target.value)} className="filter-search-input" style={{ flex: 1 }} />
-            <Button variant="secondary" size="sm" onClick={addDoc}>＋ Register</Button>
+            <Button variant="secondary" size="sm" onClick={addDoc} disabled={guest} title={guest ? "Sign in with Phone OTP for lender actions" : "Register document"}>＋ Register</Button>
           </div>
         </div>
       </CardContent>

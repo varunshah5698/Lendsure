@@ -14,6 +14,15 @@ def clamp(x: float, lo: float = 0.0, hi: float = 100.0) -> float:
     return max(lo, min(hi, x))
 
 
+def _ml_model_id() -> str:
+    """Active ML artifact id for display strings. Never hardcode versions."""
+    try:
+        from .ml import MODEL_ID
+        return MODEL_ID
+    except Exception:
+        return "lendsure-ml"
+
+
 def emi(principal: float, annual_rate_pct: float, months: int) -> float:
     """Standard amortizing EMI. Zero-rate safe."""
     if principal <= 0 or months <= 0:
@@ -134,7 +143,7 @@ class RiskEngine:
             for p in parts:
                 p["weight"] = round(p["weight"] * (1 - blend), 1)
             parts.append({"code": "ml_default_model", "title": "ML default model (51 features)",
-                          "observed": f"P(default in 12m) = {ml_p:.0%} (lendsure-ml-v2.0)",
+                          "observed": f"P(default in 12m) = {ml_p:.0%} ({_ml_model_id()})",
                           "score": ml_score, "weight": round(blend * 100, 1),
                           "impact": "raises" if ml_score >= 50 else "lowers",
                           "explanation": "Gradient-boosted model trained on observed repayment outcomes; blended with rules."})

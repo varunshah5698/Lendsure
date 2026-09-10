@@ -36,7 +36,7 @@ from lendsure.features import ENGINEERED, add_engineered
 BASE = Path(__file__).parent
 DATA = BASE / "data"
 MODELS = BASE / "models"
-MODEL_ID = "lendsure-ml-v3.1"
+MODEL_ID = "lendsure-ml-v3.2"
 LABEL_SEED = 7
 
 CAT = ["city", "employment_type", "purpose"]
@@ -104,11 +104,12 @@ def main():
         ("num", StandardScaler(), num),
     ])
 
-    # Enhanced model: better hyperparameters + stronger ensemble
+    # v3.2: balanced classes (recall was the weak spot) + stronger ensemble
     clf = HistGradientBoostingClassifier(
-        max_iter=800, learning_rate=0.04, max_leaf_nodes=31,
-        min_samples_leaf=15, l2_regularization=1.0,
-        max_depth=8, early_stopping=True, random_state=42
+        max_iter=1000, learning_rate=0.035, max_leaf_nodes=31,
+        min_samples_leaf=12, l2_regularization=1.0,
+        max_depth=8, early_stopping=True, random_state=42,
+        class_weight="balanced",
     )
     gbm2 = GradientBoostingClassifier(
         n_estimators=200, learning_rate=0.05, max_depth=5,
@@ -148,7 +149,16 @@ def main():
 
     raw = pipe.predict_proba(Xte)[:, 1]
     proba = calibrate(raw)
-    pred = (proba >= 0.5).astype(int)
+    # Tune the decision threshold for F1 on the calibration split (v3.1 used
+    # a fixed 0.5, which starved recall on the imbalanced labels).
+    from sklearn.metrics import f1_score as _f1
+    cal_p = calibrate(pipe.predict_proba(Xcal)[:, 1])
+    best_t, best_f1 = 0.5, -1.0
+    for t in [round(x, 2) for x in np.arange(0.15, 0.65, 0.01)]:
+        f1 = _f1(ycal, (cal_p >= t).astype(int), zero_division=0)
+        if f1 > best_f1:
+            best_t, best_f1 = t, f1
+    pred = (proba >= best_t).astype(int)
     fpr, tpr, _ = roc_curve(yte, proba)
     brier = float(brier_score_loss(yte, proba))
     ll = float(log_loss(yte, proba))
@@ -180,13 +190,15 @@ def main():
         "brier_score": round(brier, 4),
         "log_loss": round(ll, 4),
         "calibration_method": "platt-sigmoid",
+        "decision_threshold": best_t,
         "calibration": curve,
         "validation": validation,
         "cv_auc_mean": round(float(cv_scores.mean()), 4),
         "cv_auc_std": round(float(cv_scores.std()), 4),
         "top_drivers": [{"feature": f, "importance": round(float(v), 4)} for f, v in imp],
     }
-    joblib.dump({"pipe": pipe, "platt_a": pa, "platt_b": pb, "model_id": MODEL_ID},
+    joblib.dump({"pipe": pipe, "platt_a": pa, "platt_b": pb, "model_id": MODEL_ID,
+                 "threshold": best_t},
                 MODELS / "risk_model.joblib")
     (MODELS / "metrics.json").write_text(json.dumps(metrics, indent=2))
     print(json.dumps({k: v for k, v in metrics.items() if k != "top_drivers"}, indent=2))

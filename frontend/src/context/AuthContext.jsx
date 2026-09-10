@@ -62,3 +62,14 @@ export function useAuth() {
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
 }
+
+/** Guests are read-only: governance mutations need a lender (phone OTP) session. */
+export const isGuest = (session) => !session || session.role === "guest";
+
+export function guardLender(session, toast) {
+  if (isGuest(session)) {
+    toast?.error?.("Guests are read-only — sign in with Phone OTP for lender actions");
+    return false;
+  }
+  return true;
+}

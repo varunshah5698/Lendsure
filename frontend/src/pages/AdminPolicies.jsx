@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
+import { guardLender, isGuest } from "../context/AuthContext";
 import { useToast } from "../components/ui/Toast";
 import { admin } from "../lib/api";
 import PageHeader from "../components/layout/PageHeader";
@@ -83,6 +84,7 @@ export default function AdminPolicies() {
   const changedKeys = Object.keys(draft).filter((k) => String(draft[k]) !== String(config?.[k]));
 
   const handleSave = () => {
+    if (!guardLender(session, toast)) return;
     const ch = changedKeys.map((k) => ({ key: k, from: config[k], to: draft[k] }));
     setChanges(ch);
     setShowConfirm(true);
@@ -112,7 +114,7 @@ export default function AdminPolicies() {
         actions={changedKeys.length > 0 ? (
           <div className="policy-actions">
             <Button variant="ghost" size="sm" onClick={() => setDraft({})}>Cancel</Button>
-            <Button variant="primary" size="sm" onClick={handleSave}>Save Changes</Button>
+            <Button variant="primary" size="sm" onClick={handleSave} disabled={isGuest(session)} title={isGuest(session) ? "Sign in with Phone OTP for lender actions" : "Save policy changes"}>Save Changes</Button>
           </div>
         ) : null}
       />

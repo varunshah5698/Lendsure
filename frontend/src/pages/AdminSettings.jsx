@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
+import { guardLender, isGuest } from "../context/AuthContext";
 import { useToast } from "../components/ui/Toast";
 import { admin } from "../lib/api";
 import PageHeader from "../components/layout/PageHeader";
@@ -34,6 +35,7 @@ export default function AdminSettings() {
   useEffect(() => { loadAll(); }, [loadAll]);
 
   const createKey = async () => {
+    if (!guardLender(session, toast)) return;
     if (newKeyName.trim().length < 2) return toast.error("Give the key a label");
     try {
       const d = await admin.createKey(newKeyName.trim(), session.token);
@@ -45,6 +47,7 @@ export default function AdminSettings() {
   };
 
   const revokeKey = async (id) => {
+    if (!guardLender(session, toast)) return;
     try {
       await admin.revokeKey(id, session.token);
       toast.success("Key revoked");
@@ -53,6 +56,7 @@ export default function AdminSettings() {
   };
 
   const revokeSession = async (tok, label) => {
+    if (!guardLender(session, toast)) return;
     if (!window.confirm(`Sign out "${label}"?`)) return;
     try {
       await admin.revokeSession(tok, session.token);
@@ -62,6 +66,7 @@ export default function AdminSettings() {
   };
 
   const signOutOthers = async () => {
+    if (!guardLender(session, toast)) return;
     const others = sessions.filter((s) => !s.expired && s.token !== session.token);
     if (!others.length) return;
     if (!window.confirm(`Sign out ${others.length} other session(s)?`)) return;
@@ -100,7 +105,7 @@ export default function AdminSettings() {
               className="filter-search-input"
               style={{ maxWidth: 300 }}
             />
-            <Button variant="primary" size="sm" onClick={createKey}>＋ Create key</Button>
+            <Button variant="primary" size="sm" onClick={createKey} disabled={isGuest(session)} title={isGuest(session) ? "Sign in with Phone OTP for lender actions" : "Create API key"}>＋ Create key</Button>
           </div>
 
           {newKey && (
@@ -125,7 +130,7 @@ export default function AdminSettings() {
                       <td style={{ color: "var(--text-muted)", fontSize: 12 }}>{new Date(k.created_at + "Z").toLocaleDateString()}</td>
                       <td style={{ color: "var(--text-muted)", fontSize: 12 }}>{k.last_used ? new Date(k.last_used + "Z").toLocaleString() : "—"}</td>
                       <td>{k.revoked ? <Badge variant="HIGH">Revoked</Badge> : <Badge variant="APPROVE">Active</Badge>}</td>
-                      <td>{!k.revoked && <Button variant="ghost" size="sm" onClick={() => revokeKey(k.id)}>Revoke</Button>}</td>
+                      <td>{!k.revoked && <Button variant="ghost" size="sm" onClick={() => revokeKey(k.id)} disabled={isGuest(session)} title={isGuest(session) ? "Sign in with Phone OTP for lender actions" : "Revoke key"}>Revoke</Button>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -159,7 +164,7 @@ export default function AdminSettings() {
                       <td>{s.expired ? <Badge variant="HIGH">Expired</Badge> : <Badge variant="APPROVE">Active</Badge>}</td>
                       <td>
                         {!s.expired && (
-                          <Button variant="ghost" size="sm" onClick={() => revokeSession(s.token, s.display_name)}>
+                          <Button variant="ghost" size="sm" onClick={() => revokeSession(s.token, s.display_name)} disabled={isGuest(session)} title={isGuest(session) ? "Sign in with Phone OTP for lender actions" : "Sign out session"}>
                             Sign out
                           </Button>
                         )}

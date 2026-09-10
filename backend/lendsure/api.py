@@ -123,7 +123,9 @@ class ApiKeyIn(BaseModel):
 
 @router.get("/admin/keys")
 def list_keys(authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
-    require_perm(authorization, x_api_key, "keys.manage")
+    # Key metadata (prefix, never the secret) is readable with admin.read;
+    # creating/revoking still requires keys.manage.
+    require_perm(authorization, x_api_key, "keys.manage", "admin.read")
     conn = _DB()
     try:
         return [dict(r) for r in conn.execute(

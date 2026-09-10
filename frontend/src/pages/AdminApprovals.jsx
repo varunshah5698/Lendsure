@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { guardLender, isGuest } from "../context/AuthContext";
 import { useToast } from "../components/ui/Toast";
 import { admin, inr } from "../lib/api";
 import PageHeader from "../components/layout/PageHeader";
@@ -64,6 +65,7 @@ export default function AdminApprovals() {
   }, [load, q]);
 
   const openReview = (row) => {
+    if (!guardLender(session, toast)) return;
     setReviewing(row);
     setChoice(row.decision === "MANUAL_REVIEW" ? "APPROVE_WITH_CONDITIONS" : row.decision);
     setNote("");
@@ -160,7 +162,7 @@ export default function AdminApprovals() {
                     <td>{r.recommended_amount != null ? inr(r.recommended_amount) : "—"}</td>
                     <td style={{ whiteSpace: "nowrap" }}>
                       <Button variant="ghost" size="sm" onClick={() => navigate(`/borrower/${r.borrower_id}`)}>View</Button>
-                      <Button variant="secondary" size="sm" onClick={() => openReview(r)}>
+                      <Button variant="secondary" size="sm" onClick={() => openReview(r)} disabled={isGuest(session)} title={isGuest(session) ? "Sign in with Phone OTP for lender actions" : "Review decision"}>
                         {r.review_decision ? "Re-review" : "Review"}
                       </Button>
                     </td>

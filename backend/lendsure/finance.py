@@ -282,6 +282,7 @@ def init_fi_db():
         _seed_if_empty(conn)
     finally:
         conn.close()
+    start_live_refresh()
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -295,6 +296,198 @@ def _token(authorization: Optional[str]) -> Optional[str]:
 def _user_token(authorization: Optional[str]) -> str:
     t = _token(authorization)
     return t or "anonymous"
+
+
+# ── Live data (background refresh; seeded data is always the fallback) ───────
+# Markets: Yahoo Finance chart API (no key needed). News: NewsAPI.org when
+# NEWS_API_KEY is set. A daemon thread refreshes every 15 min; request paths
+# only ever read the DB, so a dead/slow provider can never slow the app.
+
+import os as _os
+import threading as _threading
+import time as _time
+import urllib.parse as _urlparse
+import urllib.request as _urlreq
+
+_YAHOO_UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                           "AppleWebKit/537.36 (KHTML, like Gecko) "
+                           "Chrome/126.0 Safari/537.36"}
+_LIVE_TTL_S = 900
+_live_lock = _threading.Lock()
+_live_started = False
+_live_status = {"markets": "seeded", "news": "seeded", "last_run": None}
+
+
+def _http_json(url: str, headers: dict | None = None, timeout: int = 6):
+    req = _urlreq.Request(url, headers=headers or {})
+    with _urlreq.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8", "replace"))
+
+
+def _fetch_yahoo_price(sym: str):
+    """(price, prev_close, volume) or None. Retries across hosts on 429."""
+    import urllib.error as _urlerror
+    q = _urlparse.quote(sym, safe="")
+    last = None
+    for host in ("query1.finance.yahoo.com", "query2.finance.yahoo.com"):
+        for attempt in range(3):
+            try:
+                data = _http_json(
+                    f"https://{host}/v8/finance/chart/{q}?interval=1d&range=5d",
+                    _YAHOO_UA)
+                meta = (data.get("chart", {}).get("result") or [{}])[0].get("meta", {})
+                price = meta.get("regularMarketPrice")
+                prev = meta.get("chartPreviousClose") or meta.get("previousClose")
+                if not price or not prev:
+                    closes = (((data.get("chart", {}).get("result") or [{}])[0]
+                               .get("indicators", {}).get("quote") or [{}])[0]
+                              .get("close") or [])
+                    closes = [c for c in closes if c]
+                    if len(closes) >= 2:
+                        price, prev = closes[-1], closes[-2]
+                if price and prev:
+                    return round(float(price), 2), round(float(prev), 2), \
+                        int(meta.get("regularMarketVolume") or 0)
+                return None  # symbol unknown — don't hammer
+            except _urlerror.HTTPError as e:
+                last = e
+                if e.code == 429:
+                    _time.sleep(2 + attempt * 3)
+                    continue
+                break
+            except Exception as e:
+                last = e
+                break
+    return None
+
+
+def _refresh_markets() -> int:
+    """Pull live quotes for every tracked symbol. Returns # updated."""
+    conn = _conn()
+    try:
+        syms = [r["symbol"] for r in
+                conn.execute("SELECT symbol FROM fi_market_assets").fetchall()]
+    finally:
+        conn.close()
+    updated = 0
+    now = datetime.utcnow().isoformat()
+    for i, sym in enumerate(syms):
+        if i:
+            _time.sleep(1.0)  # stay under Yahoo's rate limit
+        got = _fetch_yahoo_price(sym)
+        if not got:
+            continue
+        price, prev, vol = got
+        try:
+            chg = round(price - prev, 2)
+            pct = round(chg / prev * 100, 4) if prev else 0.0
+            conn = _conn()
+            try:
+                conn.execute(
+                    "UPDATE fi_market_assets SET current_price=?, prev_close=?, "
+                    "change_abs=?, change_pct=?, volume=?, updated_at=? WHERE symbol=?",
+                    (price, prev, chg, pct, vol, now, sym))
+                conn.execute(
+                    "INSERT INTO fi_market_snapshots (symbol,price,volume,ts) VALUES (?,?,?,?)",
+                    (sym, price, vol, now))
+                conn.commit()
+            finally:
+                conn.close()
+            updated += 1
+        except Exception:
+            continue
+    with _live_lock:
+        if updated:
+            _live_status["markets"] = "live"
+        _live_status["last_run"] = datetime.utcnow().isoformat()
+    return updated
+
+
+_NEWS_CAT_HINTS = [
+    ("banking", ("bank", "npa", "rbi")),
+    ("regulation", ("regulation", "sebi", "rbi", "framework", "norms")),
+    ("credit", ("credit", "loan", "default", "delinquen", "emi")),
+    ("lending", ("lending", "nbFc", "msme", "sme")),
+    ("fintech", ("fintech", "upi", "digital", "startup")),
+    ("economy", ("gdp", "inflation", "economy", "rbi", "rate", "growth")),
+]
+
+
+def _classify_live_news(title: str, desc: str) -> str:
+    text = f"{title} {desc}".lower()
+    for cat, hints in _NEWS_CAT_HINTS:
+        if any(h.lower() in text for h in hints):
+            return cat
+    return "markets"
+
+
+def _refresh_news() -> int:
+    """Pull live headlines when a NewsAPI key is configured. Returns # added."""
+    key = _os.environ.get("NEWS_API_KEY") or _os.environ.get("LENDSURE_NEWS_API_KEY") or ""
+    if not key:
+        return 0
+    data = _http_json(
+        "https://newsapi.org/v2/top-headlines?country=in&category=business&pageSize=30",
+        {"X-Api-Key": key, **_YAHOO_UA})
+    if data.get("status") != "ok":
+        raise RuntimeError(f"NewsAPI: {data.get('message', 'bad response')}")
+    now = datetime.utcnow().isoformat()
+    added = 0
+    conn = _conn()
+    try:
+        for a in data.get("articles", []):
+            title = (a.get("title") or "").strip()
+            if not title or title == "[Removed]":
+                continue
+            exists = conn.execute("SELECT 1 FROM fi_news WHERE title=? LIMIT 1",
+                                  (title,)).fetchone()
+            if exists:
+                continue
+            desc = (a.get("description") or "")[:500]
+            src = (a.get("source") or {}).get("name", "NewsAPI")[:60]
+            conn.execute(
+                """INSERT INTO fi_news (source,source_url,title,description,content,
+                   published_at,image_url,category,country,author,symbols,ai_summary,
+                   lending_impact,impact_level,market_impact,ai_confidence,tags,created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (src, a.get("url") or "", title, desc, desc,
+                 a.get("publishedAt") or now, a.get("urlToImage") or "",
+                 _classify_live_news(title, desc), "IN", src, "[]",
+                 desc[:240], "", "medium", "medium", 60, "[]", now))
+            added += 1
+        conn.commit()
+    finally:
+        conn.close()
+    with _live_lock:
+        _live_status["news"] = "live"
+        _live_status["last_run"] = datetime.utcnow().isoformat()
+    return added
+
+
+def _live_refresh_loop():
+    _time.sleep(5)  # let boot finish
+    while True:
+        try:
+            n = _refresh_markets()
+            print(f"[live] markets refreshed: {n} symbols", flush=True)
+        except Exception as e:
+            print(f"[live] markets refresh failed ({e}); using seeded data", flush=True)
+        try:
+            n = _refresh_news()
+            if n:
+                print(f"[live] news added: {n} articles", flush=True)
+        except Exception as e:
+            print(f"[live] news refresh failed ({e}); using seeded data", flush=True)
+        _time.sleep(_LIVE_TTL_S)
+
+
+def start_live_refresh():
+    global _live_started
+    with _live_lock:
+        if _live_started:
+            return
+        _live_started = True
+    _threading.Thread(target=_live_refresh_loop, daemon=True).start()
 
 
 # ── Overview ─────────────────────────────────────────────────────────────────
@@ -705,11 +898,14 @@ def ai_briefing():
 
 @router.get("/sources")
 def sources():
+    with _live_lock:
+        m_mode = _live_status["markets"]
+        n_mode = _live_status["news"]
     return {
-        "market_data": {"provider": "Simulated (seeded)", "status": "active", "last_updated": datetime.utcnow().isoformat(), "coverage": "Indian & Global markets"},
-        "news_data": {"provider": "Simulated (seeded)", "status": "active", "last_updated": datetime.utcnow().isoformat(), "coverage": "Financial news"},
-        "economic_data": {"provider": "Simulated (seeded)", "status": "active", "last_updated": datetime.utcnow().isoformat(), "coverage": "Indian economic indicators"},
-        "internal_data": {"provider": "LendSure", "status": "active", "last_updated": datetime.utcnow().isoformat(), "coverage": "Borrower portfolio"},
+        "market_data": {"provider": "Yahoo Finance (live)" if m_mode == "live" else "Simulated (seeded)", "status": "active", "mode": m_mode, "last_updated": datetime.utcnow().isoformat(), "coverage": "Indian & Global markets"},
+        "news_data": {"provider": "NewsAPI.org (live)" if n_mode == "live" else "Simulated (seeded)", "status": "active", "mode": n_mode, "last_updated": datetime.utcnow().isoformat(), "coverage": "Financial news"},
+        "economic_data": {"provider": "Simulated (seeded)", "status": "active", "mode": "seeded", "last_updated": datetime.utcnow().isoformat(), "coverage": "Indian economic indicators"},
+        "internal_data": {"provider": "LendSure", "status": "active", "mode": "live", "last_updated": datetime.utcnow().isoformat(), "coverage": "Borrower portfolio"},
     }
 
 
