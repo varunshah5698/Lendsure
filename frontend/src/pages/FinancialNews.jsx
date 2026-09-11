@@ -29,6 +29,7 @@ export default function FinancialNews() {
   const [loading, setLoading] = useState(true);
   const [bookmarks, setBookmarks] = useState(loadBookmarks);
   const [savedOnly, setSavedOnly] = useState(false);
+  const [newsMode, setNewsMode] = useState("seeded");
 
   const load = useCallback(() => {
     if (!session?.token) return;
@@ -37,6 +38,9 @@ export default function FinancialNews() {
       .then((d) => { setArticles(d.articles || []); setTotal(d.total || 0); })
       .catch(() => {})
       .finally(() => setLoading(false));
+    finance.sources(session.token)
+      .then((s) => setNewsMode(s?.news_data?.mode || "seeded"))
+      .catch(() => {});
   }, [session?.token, category, country, search, page]);
 
   useEffect(() => { setPage(1); }, [category, country, search]);
@@ -67,7 +71,10 @@ export default function FinancialNews() {
             {savedOnly ? `${savedList.length} bookmarked` : `${total} articles`} — financial intelligence for lending decisions
           </p>
         </div>
-        <div className="fi-demo-badge"><span className="fi-demo-dot" /> DEMO FEED</div>
+        <div className="fi-demo-badge" title={newsMode === "live" ? "Headlines ingested live from NewsAPI.org" : "Seeded dataset — set NEWS_API_KEY on the server for live headlines"}>
+          <span className="fi-demo-dot" style={{ background: newsMode === "live" ? "#22c55e" : "#f59e0b", boxShadow: newsMode === "live" ? "0 0 6px #22c55e" : "none" }} />
+          {newsMode === "live" ? "LIVE · NewsAPI" : "SEEDED FEED"}
+        </div>
       </div>
 
       <div className="fi-news-filters">

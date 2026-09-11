@@ -38,8 +38,24 @@ export default function FinancialOverview() {
       .finally(() => setLoading(false));
   }, [session?.token]);
 
+  // live refresh of market numbers every 30s while visible (silent)
+  useEffect(() => {
+    if (!session?.token) return;
+    const id = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      finance.overview(session.token).then(setData).catch(() => {});
+    }, 30000);
+    return () => clearInterval(id);
+  }, [session?.token]);
+
   if (loading) return <div className="fi-overview"><Skeleton lines={6} /></div>;
   if (!data) return <div className="fi-overview"><p>Failed to load financial intelligence.</p></div>;
+
+  const newest = (data.market_status || []).reduce(
+    (m, a) => (!m || (a.updated_at || "") > m ? (a.updated_at || "") : m), "");
+  const ageS = newest ? Math.max(0, Math.round((Date.now() - new Date(newest.length === 16 ? newest + ":00" : newest).getTime()) / 1000)) : null;
+  const live = ageS != null && ageS < 180;
+  const ageLabel = ageS == null ? "unknown age" : ageS < 60 ? `${ageS}s ago` : ageS < 3600 ? `${Math.floor(ageS / 60)}m ago` : `${Math.floor(ageS / 3600)}h ago`;
 
   return (
     <div className="fi-overview">
@@ -48,7 +64,10 @@ export default function FinancialOverview() {
           <h1 className="fi-title">Financial Intelligence</h1>
           <p className="fi-subtitle">Market & economic conditions affecting lending</p>
         </div>
-        <div className="fi-demo-badge"><span className="fi-demo-dot" /> DEMO FEED</div>
+        <div className="fi-demo-badge" title={live ? "Prices refreshed from Yahoo Finance within the last 3 minutes" : "Provider slow or rate-limited — showing last stored quotes"}>
+          <span className="fi-demo-dot" style={{ background: live ? "#22c55e" : "#f59e0b", boxShadow: live ? "0 0 6px #22c55e" : "none" }} />
+          {live ? `LIVE · ${ageLabel}` : `STALE · ${ageLabel}`}
+        </div>
       </div>
 
       {/* Top summary cards */}

@@ -11,6 +11,20 @@ import "./FinancialMarkets.css";
 const REGIONS = ["all", "IN", "US", "GB", "DE", "JP"];
 const TYPES = ["all", "index", "currency", "commodity", "crypto"];
 
+function ageSecs(ts) {
+  if (!ts) return null;
+  const t = new Date(ts.length === 16 ? ts + ":00" : ts).getTime();
+  if (Number.isNaN(t)) return null;
+  return Math.max(0, Math.round((Date.now() - t) / 1000));
+}
+
+function ageLabel(secs) {
+  if (secs == null) return "unknown age";
+  if (secs < 60) return `${secs}s ago`;
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+  return `${Math.floor(secs / 3600)}h ago`;
+}
+
 export default function FinancialMarkets() {
   const { session } = useAuth();
   const navigate = useNavigate();
@@ -18,15 +32,36 @@ export default function FinancialMarkets() {
   const [region, setRegion] = useState("all");
   const [type, setType] = useState("all");
   const [loading, setLoading] = useState(true);
+  const [tick, setTick] = useState(0); // re-renders age labels
 
-  useEffect(() => {
+  const fetchAssets = async (silent) => {
     if (!session?.token) return;
-    setLoading(true);
-    finance.markets({ region, asset_type: type }, session.token)
-      .then(setAssets)
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    if (!silent) setLoading(true);
+    try {
+      setAssets(await finance.markets({ region, asset_type: type }, session.token));
+    } catch {}
+    finally { if (!silent) setLoading(false); }
+  };
+
+  useEffect(() => { fetchAssets(false); }, [session?.token, region, type]);
+
+  // live refresh: silent re-fetch every 30s while the tab is visible
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") fetchAssets(true);
+    }, 30000);
+    return () => clearInterval(id);
   }, [session?.token, region, type]);
+
+  // re-render age labels every 15s
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 15000);
+    return () => clearInterval(id);
+  }, []);
+
+  const newest = assets.reduce((m, a) => (!m || (a.updated_at || "") > m ? (a.updated_at || "") : m), "");
+  const age = ageSecs(newest);
+  const live = age != null && age < 180;
 
   return (
     <div className="fi-markets-page">
@@ -35,7 +70,10 @@ export default function FinancialMarkets() {
           <h1 className="fi-title">Markets</h1>
           <p className="fi-subtitle">Indian and global market data</p>
         </div>
-        <div className="fi-demo-badge"><span className="fi-demo-dot" /> DEMO FEED</div>
+        <div className="fi-demo-badge" title={live ? "Prices refreshed from Yahoo Finance within the last 3 minutes" : "Provider slow or rate-limited — showing last stored quotes"}>
+          <span className="fi-demo-dot" style={{ background: live ? "#22c55e" : "#f59e0b", boxShadow: live ? "0 0 6px #22c55e" : "none" }} />
+          {live ? `LIVE · ${ageLabel(age)}` : `STALE · ${ageLabel(age)}`}
+        </div>
       </div>
 
       <div className="fi-markets-filters">
@@ -88,6 +126,7 @@ export default function FinancialMarkets() {
                 <span>L: {Number(a.day_low).toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
                 <span>Vol: {(a.volume || 0).toLocaleString()}</span>
               </div>
+              <div className="fi-market-age" title="When this quote was stored">updated {ageLabel(ageSecs(a.updated_at))}</div>
             </Link>
           ))}
         </div>

@@ -312,7 +312,7 @@ import urllib.request as _urlreq
 _YAHOO_UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                            "AppleWebKit/537.36 (KHTML, like Gecko) "
                            "Chrome/126.0 Safari/537.36"}
-_LIVE_TTL_S = 900
+_LIVE_TTL_S = 60
 _live_lock = _threading.Lock()
 _live_started = False
 _live_status = {"markets": "seeded", "news": "seeded", "last_run": None}
@@ -373,7 +373,7 @@ def _refresh_markets() -> int:
     now = datetime.utcnow().isoformat()
     for i, sym in enumerate(syms):
         if i:
-            _time.sleep(1.0)  # stay under Yahoo's rate limit
+            _time.sleep(0.6)  # stay under Yahoo's rate limit
         got = _fetch_yahoo_price(sym)
         if not got:
             continue
@@ -512,7 +512,7 @@ def overview(authorization: Optional[str] = Header(default=None)):
                 market_assets.append({
                     "symbol": a["symbol"], "name": a["name"],
                     "price": a["current_price"], "change_pct": a["change_pct"],
-                    "change_abs": a["change_abs"],
+                    "change_abs": a["change_abs"], "updated_at": a["updated_at"],
                 })
 
         # Economic summary
