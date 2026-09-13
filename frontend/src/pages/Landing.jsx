@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
+import { useAuth } from "../context/AuthContext";
 import FloatingCards from "../components/landing/FloatingCards";
 import SafeRiskCore from "../components/landing/SafeRiskCore";
 import SafeApprovalWave from "../components/landing/SafeApprovalWave";
@@ -14,6 +15,8 @@ const stagger = { initial: { opacity: 0, y: 20 }, whileInView: { opacity: 1, y: 
 function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { session } = useAuth();
+  const app = session ? "/dashboard" : "/auth";
   useEffect(() => {
     const h = () => setScrolled(window.scrollY > 40);
     window.addEventListener("scroll", h, { passive: true });
@@ -37,8 +40,14 @@ function Navbar() {
           <a href="#security">Security</a>
         </div>
         <div className="lp-nav-actions">
-          <Link to="/auth" className="lp-btn-ghost">Sign In</Link>
-          <Link to="/auth" className="lp-btn-primary">Get Started →</Link>
+          {session ? (
+            <Link to="/dashboard" className="lp-btn-primary">Open Dashboard →</Link>
+          ) : (
+            <>
+              <Link to="/auth" className="lp-btn-ghost">Sign In</Link>
+              <Link to="/auth" className="lp-btn-primary">Get Started →</Link>
+            </>
+          )}
         </div>
         <button className="lp-nav-mobile" onClick={() => setMobileOpen(!mobileOpen)} aria-label="Menu">
           <Icon name={mobileOpen ? "x" : "menu"} size={18} />
@@ -49,6 +58,8 @@ function Navbar() {
 }
 
 function Hero() {
+  const { session } = useAuth();
+  const app = session ? "/dashboard" : "/auth";
   return (
     <section className="lp-hero">
       <div className="lp-hero-bg">
@@ -66,7 +77,7 @@ function Hero() {
           LendSure transforms borrower data into explainable trust, risk, and lending intelligence — so you can make decisions backed by evidence, not assumptions.
         </motion.p>
         <motion.div className="lp-hero-ctas" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6, duration: 0.7 }}>
-          <Link to="/auth" className="lp-btn-primary lp-btn-lg">Analyze a Borrower →</Link>
+          <Link to={app} className="lp-btn-primary lp-btn-lg">{session ? "Open Dashboard →" : "Analyze a Borrower →"}</Link>
           <a href="#how-it-works" className="lp-btn-outline lp-btn-lg">Explore the Intelligence</a>
         </motion.div>
         <motion.div className="lp-hero-badges" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1, duration: 0.8 }}>
@@ -329,6 +340,8 @@ function AuditTrail() {
 }
 
 function DashboardPreview() {
+  const { session } = useAuth();
+  const app = session ? "/dashboard" : "/auth";
   return (
     <section className="lp-section lp-section-dark">
       <motion.div {...fadeUp}>
@@ -360,7 +373,7 @@ function DashboardPreview() {
         </div>
       </motion.div>
       <motion.div className="lp-dashboard-cta" {...fadeUp}>
-        <Link to="/auth" className="lp-btn-primary lp-btn-lg">Explore the Dashboard →</Link>
+        <Link to={app} className="lp-btn-primary lp-btn-lg">Explore the Dashboard →</Link>
       </motion.div>
     </section>
   );
@@ -386,6 +399,8 @@ function SecuritySection() {
 }
 
 function FinalCTA() {
+  const { session } = useAuth();
+  const app = session ? "/dashboard" : "/auth";
   return (
     <section className="lp-section lp-final-cta">
       <motion.div className="lp-final-content" {...fadeUp}>
@@ -395,8 +410,8 @@ function FinalCTA() {
         <h2 className="lp-section-title">LEND WITH<br />CONFIDENCE.</h2>
         <p className="lp-section-sub">Turn borrower information into clear, explainable lending intelligence.</p>
         <div className="lp-hero-ctas">
-          <Link to="/auth" className="lp-btn-primary lp-btn-lg">Analyze a Borrower →</Link>
-          <Link to="/auth" className="lp-btn-outline lp-btn-lg">Explore LendSure →</Link>
+          <Link to={app} className="lp-btn-primary lp-btn-lg">{session ? "Open Dashboard →" : "Analyze a Borrower →"}</Link>
+          <Link to={app} className="lp-btn-outline lp-btn-lg">Explore LendSure →</Link>
         </div>
       </motion.div>
     </section>

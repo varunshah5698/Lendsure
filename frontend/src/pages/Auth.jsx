@@ -6,8 +6,12 @@ import Logo from "../components/ui/Logo";
 import "./Auth.css";
 
 export default function Auth() {
-  const { signIn } = useAuth();
+  const { session, loading: authLoading, signIn } = useAuth();
   const navigate = useNavigate();
+  // Already signed in (e.g. back from the landing page)? Skip the form.
+  useEffect(() => {
+    if (!authLoading && session) navigate("/dashboard", { replace: true });
+  }, [authLoading, session, navigate]);
   const [mode, setMode] = useState("otp");
   const [step, setStep] = useState("phone");
   const [name, setName] = useState("");
