@@ -8,6 +8,9 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Warm up a sleeping serverless backend while the user reads the screen,
+    // so the first real tap (login) doesn't pay the cold-start wait.
+    fetch("/api/health").catch(() => {});
     const raw = localStorage.getItem("ls_session");
     if (raw) {
       try {

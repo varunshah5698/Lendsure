@@ -8,7 +8,9 @@
     },
     "backend": {
       "root": "backend",
-      "entrypoint": "app:app"
+      "entrypoint": "app:app",
+      "memory": 1024,
+      "maxDuration": 60
     }
   },
   "rewrites": [

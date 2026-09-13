@@ -1,4 +1,7 @@
 const BASE = "/api";
+// Serverless backends sleep when idle: first request wakes them (cold start).
+// Never hang silently — give up with a clear message so the UI can retry.
+const REQUEST_TIMEOUT_MS = 45000;
 
 function authHeaders(token) {
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -6,9 +9,12 @@ function authHeaders(token) {
 
 export async function api(path, opts = {}, token = null) {
   let r;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
   try {
     r = await fetch(`${BASE}${path}`, {
       ...opts,
+      signal: ctrl.signal,
       headers: {
         "Content-Type": "application/json",
         ...authHeaders(token),
@@ -16,10 +22,17 @@ export async function api(path, opts = {}, token = null) {
       },
     });
   } catch (e) {
+    if (e?.name === "AbortError") {
+      throw new Error(
+        "Server is waking up (cold start). Wait 30 seconds and try again."
+      );
+    }
     throw new Error(
       "Cannot reach the LendSure server. Start it first by running " +
       "`./start.sh` in the project folder (or: python3 -m uvicorn app:app --host 127.0.0.1 --port 8000 in backend/)."
     );
+  } finally {
+    clearTimeout(timer);
   }
   if (r.status === 401) {
     throw new Error("SESSION_EXPIRED");

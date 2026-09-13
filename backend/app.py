@@ -9,6 +9,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import sqlite3
 import time
 import uuid
@@ -26,7 +27,29 @@ from pydantic import BaseModel, Field
 from lendsure.schema import DDL as LS_DDL, LIFECYCLE_DDL, LS_MIGRATIONS
 
 BASE_DIR = Path(__file__).parent
-DB_PATH = BASE_DIR / "lending.db"
+SEED_DB_PATH = BASE_DIR / "lending.db"
+
+
+def _resolve_db_path() -> Path:
+    """Where the live SQLite file lives.
+
+    Locally / Docker: the bundled file next to the code.
+    Vercel serverless: the deployment filesystem is read-only, so login
+    (which writes session/OTP rows) can never work there. Run from /tmp
+    instead, seeded from the bundled file on cold boot.
+    """
+    if os.environ.get("VERCEL"):
+        live = Path("/tmp/lending.db")
+        if not live.exists():
+            try:
+                shutil.copyfile(SEED_DB_PATH, live)
+            except Exception:
+                pass  # fall through to a fresh empty DB
+        return live
+    return SEED_DB_PATH
+
+
+DB_PATH = _resolve_db_path()
 STATIC_DIR = BASE_DIR / "static"
 
 # ---------------- Security config (env-driven, no secrets in code) ----------------
