@@ -3,8 +3,17 @@ const BASE = "/api";
 // Never hang silently — give up with a clear message so the UI can retry.
 const REQUEST_TIMEOUT_MS = 45000;
 
-function authHeaders(token) {
-  return token ? { Authorization: `Bearer ${token}` } : {};
+// Authentication rides the HttpOnly session cookie (same-origin, sent
+// automatically). NOTHING that can authenticate is ever kept in JS memory
+// or storage — the `token` argument below is accepted for call-site
+// compatibility and deliberately ignored.
+function flagExpired() {
+  try { sessionStorage.setItem("ls_expired", "1"); } catch {}
+  try { window.dispatchEvent(new Event("lendsure:session-expired")); } catch {}
+}
+
+function hasProfile() {
+  try { return !!localStorage.getItem("ls_profile"); } catch { return false; }
 }
 
 export async function api(path, opts = {}, token = null) {
@@ -17,7 +26,6 @@ export async function api(path, opts = {}, token = null) {
       signal: ctrl.signal,
       headers: {
         "Content-Type": "application/json",
-        ...authHeaders(token),
         ...(opts.headers || {}),
       },
     });
@@ -35,9 +43,16 @@ export async function api(path, opts = {}, token = null) {
     clearTimeout(timer);
   }
   if (r.status === 401) {
+    flagExpired();
     throw new Error("SESSION_EXPIRED");
   }
   if (!r.ok) {
+    // A signed-in profile hitting 403 means the server-side session is gone
+    // (a valid lender is never forbidden) — treat as expired, not as an error.
+    if (r.status === 403 && hasProfile()) {
+      flagExpired();
+      throw new Error("SESSION_EXPIRED");
+    }
     let msg = r.statusText;
     try {
       const body = await r.json();
@@ -62,6 +77,8 @@ export const auth = {
     api("/auth/verify-email", { method: "POST", body: JSON.stringify({ email, otp }) }),
   emailLogin: (email, password) =>
     api("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+  verifyLogin: (email, otp) =>
+    api("/auth/verify-login", { method: "POST", body: JSON.stringify({ email, otp }) }),
   forgotPassword: (email) =>
     api("/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) }),
   resetPassword: (email, otp, new_password) =>

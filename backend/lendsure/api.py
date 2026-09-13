@@ -919,6 +919,7 @@ def review_approval(aid: int, item: ReviewIn,
 @router.get("/admin/sessions")
 def admin_sessions(authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
     require_perm(authorization, x_api_key, "admin.read")
+    mine = (authorization[7:].strip() if authorization and authorization.startswith("Bearer ") else "")
     # sessions table lives in the app DB, not the lendsure module DB handle —
     # both point at the same file, so query through this connection.
     conn = _DB()
@@ -931,6 +932,7 @@ def admin_sessions(authorization: str | None = Header(default=None), x_api_key: 
         return [{"token_prefix": r["token"][:8] + "…", "token": r["token"],
                  "phone": r["phone"], "display_name": r["display_name"], "role": r["role"],
                  "created_at": r["created_at"], "expires_at": r["expires_at"],
+                 "current": r["token"] == mine,
                  "expired": r["expires_at"] < now()} for r in rows]
     finally:
         conn.close()

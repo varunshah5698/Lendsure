@@ -19,25 +19,25 @@ export default function NotificationBell() {
   const pollRef = useRef(null);
 
   const refresh = useCallback(async () => {
-    if (!session?.token) return;
+    if (!session) return;
     try {
       const u = await notify.unread(session.token);
       setUnread(u.unread);
     } catch {}
-  }, [session?.token]);
+  }, [session]);
 
   const loadList = useCallback(async () => {
-    if (!session?.token) return;
+    if (!session) return;
     try {
       setItems(await notify.list(session.token));
       const u = await notify.unread(session.token);
       setUnread(u.unread);
     } catch {}
-  }, [session?.token]);
+  }, [session]);
 
   // SSE stream (primary) — falls back to polling on any failure.
   useEffect(() => {
-    if (!session?.token) return;
+    if (!session) return;
     let stopped = false;
     let es = null;
     const startPolling = () => {
@@ -81,7 +81,7 @@ export default function NotificationBell() {
       pollRef.current = null;
       esRef.current = null;
     };
-  }, [session?.token, refresh]);
+  }, [session, refresh]);
 
   // close dropdown on outside click
   useEffect(() => {

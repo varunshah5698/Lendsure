@@ -20,7 +20,7 @@ from typing import Any, Optional
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -84,6 +84,27 @@ def _rate_tier(path: str) -> tuple[int, int]:
 async def security_middleware(request: Request, call_next):
     rid = uuid.uuid4().hex[:12]
     request.state.rid = rid
+    # --- Cookie session -> Authorization header (single choke point) ---
+    # Browsers authenticate with the HttpOnly session cookie; API clients use
+    # Bearer tokens. Downstream code only understands Bearer, so bridge it here.
+    token = None
+    authz = request.headers.get("authorization")
+    if authz and authz.startswith("Bearer "):
+        token = authz[7:].strip() or None
+    if not token:
+        token = request.cookies.get(SESSION_COOKIE)
+    request.state.session_token = token
+    if token and not authz:
+        try:
+            request.scope["headers"].append(
+                (b"authorization", f"Bearer {token}".encode("latin-1")))
+        except Exception:
+            pass
+    # Full session gate: absolute expiry, idle window, hijack binding + touch.
+    try:
+        request.state.session = _validate_session_token(token, request) if token else None
+    except Exception:
+        request.state.session = None
     if request.method in ("POST", "PUT", "PATCH", "DELETE"):
         try:
             cl = int(request.headers.get("content-length", "0") or 0)
@@ -93,6 +114,26 @@ async def security_middleware(request: Request, call_next):
             return JSONResponse(
                 {"detail": f"Request body too large (limit {MAX_BODY_BYTES} bytes)"},
                 status_code=413, headers={"X-Request-ID": rid})
+        # --- CSRF gate: cookies ride along automatically, so mutations must
+        # not be forgeable by a plain cross-site form post. JSON bodies can't
+        # be forged that way; multipart uploads additionally need same-origin.
+        # Bodiless POSTs (logout) carry nothing to forge — let them through.
+        if cl > 0 and request.url.path.startswith("/api/"):
+            ctype = request.headers.get("content-type", "")
+            if "application/json" not in ctype and "multipart/form-data" not in ctype:
+                return JSONResponse(
+                    {"detail": "Requests must use JSON encoding"},
+                    status_code=403, headers={"X-Request-ID": rid})
+            if "multipart/form-data" in ctype:
+                from urllib.parse import urlparse
+                origin = request.headers.get("origin") or request.headers.get("referer") or ""
+                if origin:
+                    oh = urlparse(origin).hostname or ""
+                    hh = (request.headers.get("host") or "").split(":")[0]
+                    if oh and hh and oh != hh:
+                        return JSONResponse(
+                            {"detail": "Cross-origin request rejected"},
+                            status_code=403, headers={"X-Request-ID": rid})
     p = request.url.path
     if not (p.startswith("/static") or p in ("/docs", "/openapi.json", "/redoc")):
         limit, window = _rate_tier(p)
@@ -256,6 +297,21 @@ def init_db():
         conn.execute("ALTER TABLE sessions ADD COLUMN email TEXT DEFAULT ''")
     except Exception:
         pass  # column already exists
+    for _col, _typ in (("last_active", "TEXT"), ("ip", "TEXT DEFAULT ''"),
+                       ("ua_hash", "TEXT DEFAULT ''"), ("device_hash", "TEXT DEFAULT ''")):
+        try:
+            conn.execute(f"ALTER TABLE sessions ADD COLUMN {_col} {_typ}")
+        except Exception:
+            pass  # column already exists
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS ls_devices (
+            email TEXT NOT NULL,
+            device_hash TEXT NOT NULL,
+            verified INTEGER DEFAULT 0,
+            first_seen TEXT NOT NULL,
+            last_seen TEXT NOT NULL,
+            PRIMARY KEY (email, device_hash)
+        )""")
     conn.commit()
     conn.close()
     # LendSure tables (created if missing; data comes from import_lendsure.py)
@@ -403,6 +459,15 @@ class GuestIn(BaseModel):
 DEMO_OTP = os.environ.get("LENDSURE_DEMO_OTP", "1") == "1"
 OTP_TTL_MIN = int(os.environ.get("LENDSURE_OTP_TTL_MIN", "5"))
 OTP_TTL_MIN = max(1, OTP_TTL_MIN)
+
+# ---------------- Persistent sessions + inactivity timeout ----------------
+# Browser sessions live in an HttpOnly SameSite cookie; the server owns all
+# state (absolute expiry + sliding inactivity window). localStorage/JS never
+# holds anything that can authenticate — it only caches display profile.
+SESSION_COOKIE = "lendsure_session"
+IDLE_TIMEOUT_SEC = int(os.environ.get("LENDSURE_IDLE_TIMEOUT_SEC", "300"))
+IDLE_TIMEOUT_SEC = max(30, IDLE_TIMEOUT_SEC)  # floor so tests can shrink it
+TOUCH_THROTTLE_SEC = 30  # refresh last_active at most this often (write thrift)
 
 
 # ---------------- Explainable AI engine ----------------
@@ -677,24 +742,148 @@ def _session_from_header(authorization: Optional[str]) -> Optional[dict]:
             conn.execute("DELETE FROM sessions WHERE token=?", (token,))
             conn.commit()
             return None
+        # Idle window is enforced here too (no touch — the middleware owns that),
+        # so direct callers can never resurrect a timed-out session.
+        last = s.get("last_active") or s.get("created_at")
+        if last and last < (_now() - timedelta(seconds=IDLE_TIMEOUT_SEC)).isoformat():
+            conn.execute("DELETE FROM sessions WHERE token=?", (token,))
+            conn.commit()
+            return None
         return s
     finally:
         conn.close()
 
 
-def _make_session(phone: str, display_name: str, role: str, days: int, email: str = "") -> dict:
+def _client_ip(request: Request | None) -> str:
+    if request is None:
+        return ""
+    fwd = request.headers.get("x-forwarded-for", "")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "?"
+
+
+def _ua_hash(request: Request | None) -> str:
+    if request is None:
+        return ""
+    return hashlib.sha256((request.headers.get("user-agent", "") or "").encode()).hexdigest()[:32]
+
+
+def _device_hash(request: Request | None) -> str:
+    """Stable-ish device fingerprint: browser UA + client IP."""
+    if request is None:
+        return ""
+    ua = request.headers.get("user-agent", "") or ""
+    return hashlib.sha256(f"{ua}|{_client_ip(request)}".encode()).hexdigest()[:32]
+
+
+def _is_https(request: Request) -> bool:
+    if (request.headers.get("x-forwarded-proto", "") or "").split(",")[0].strip() == "https":
+        return True
+    return request.url.scheme == "https"
+
+
+def _validate_session_token(token: str | None, request: Request | None = None) -> Optional[dict]:
+    """Full session gate used by the middleware on every request.
+
+    Enforces absolute expiry, then the sliding inactivity window (each login
+    gets an independent timer that refreshes on authenticated activity),
+    then hijack binding (IP *and* UA both changed => kill). Refreshes
+    last_active, throttled to TOUCH_THROTTLE_SEC to spare the DB.
+    """
+    if not token:
+        return None
+    conn = db()
+    try:
+        row = conn.execute("SELECT * FROM sessions WHERE token=?", (token,)).fetchone()
+        if not row:
+            return None
+        s = dict(row)
+        now = _now()
+        if s["expires_at"] < now.isoformat():
+            conn.execute("DELETE FROM sessions WHERE token=?", (token,))
+            conn.commit()
+            return None
+        last = s.get("last_active") or s.get("created_at")
+        if last and last < (now - timedelta(seconds=IDLE_TIMEOUT_SEC)).isoformat():
+            conn.execute("DELETE FROM sessions WHERE token=?", (token,))
+            conn.commit()
+            _audit_event("auth_idle_expired",
+                         f"{s.get('display_name', '?')} ({s.get('phone', '?')})", {})
+            return None
+        if request is not None:
+            cur_ip, cur_ua = _client_ip(request), _ua_hash(request)
+            if not s.get("ua_hash") or not s.get("ip"):
+                # Legacy session: adopt the binding on first contact.
+                conn.execute("UPDATE sessions SET ip=?, ua_hash=?, last_active=? WHERE token=?",
+                             (cur_ip, cur_ua, now.isoformat(), token))
+                conn.commit()
+            else:
+                if s["ua_hash"] != cur_ua and s["ip"] != cur_ip:
+                    conn.execute("DELETE FROM sessions WHERE token=?", (token,))
+                    conn.commit()
+                    _audit_event("auth_hijack_killed",
+                                 f"{s.get('display_name', '?')} ({s.get('phone', '?')})",
+                                 {"ip": cur_ip})
+                    return None
+                if not last or last < (now - timedelta(seconds=TOUCH_THROTTLE_SEC)).isoformat():
+                    conn.execute("UPDATE sessions SET last_active=? WHERE token=?",
+                                 (now.isoformat(), token))
+                    conn.commit()
+        return s
+    finally:
+        conn.close()
+
+
+def _make_session(phone: str, display_name: str, role: str, days: int, email: str = "",
+                  request: Request | None = None, device_hash: str = "") -> tuple[dict, str]:
+    """Create a session row. Returns (public profile, raw token).
+    The token is NEVER returned to browsers in a body — it travels out in
+    the HttpOnly session cookie only."""
     token = secrets.token_urlsafe(32)
     now = _now()
     conn = db()
     try:
         conn.execute(
-            "INSERT INTO sessions (token, phone, display_name, role, created_at, expires_at, email) VALUES (?,?,?,?,?,?,?)",
-            (token, phone, display_name, role, now.isoformat(), (now + timedelta(days=days)).isoformat(), email),
+            "INSERT INTO sessions (token, phone, display_name, role, created_at, expires_at, email,"
+            " last_active, ip, ua_hash, device_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (token, phone, display_name, role, now.isoformat(),
+             (now + timedelta(days=days)).isoformat(), email, now.isoformat(),
+             _client_ip(request), _ua_hash(request), device_hash),
         )
         conn.commit()
     finally:
         conn.close()
-    return {"token": token, "phone": phone, "display_name": display_name, "role": role, "email": email}
+    return ({"display_name": display_name, "phone": phone, "role": role, "email": email}, token)
+
+
+def _set_session_cookie(response: Response, request: Request, token: str, days: int):
+    response.set_cookie(SESSION_COOKIE, token, max_age=days * 86400, httponly=True,
+                        samesite="lax", secure=_is_https(request), path="/")
+
+
+def _clear_session_cookie(response: Response):
+    response.delete_cookie(SESSION_COOKIE, path="/")
+
+
+def _record_device(conn, email: str, request: Request | None, verified: int):
+    dh = _device_hash(request)
+    if not dh:
+        return
+    ts = _now().isoformat()
+    conn.execute("INSERT INTO ls_devices (email, device_hash, verified, first_seen, last_seen)"
+                 " VALUES (?,?,?,?,?) ON CONFLICT(email, device_hash) DO UPDATE SET"
+                 " verified=max(verified, excluded.verified), last_seen=excluded.last_seen",
+                 (email, dh, verified, ts, ts))
+
+
+def _device_verified(conn, email: str, request: Request | None) -> bool:
+    dh = _device_hash(request)
+    if not dh:
+        return False
+    row = conn.execute("SELECT verified FROM ls_devices WHERE email=? AND device_hash=?",
+                       (email, dh)).fetchone()
+    return bool(row and row["verified"])
 
 
 @app.post("/api/auth/request-otp")
@@ -729,7 +918,7 @@ def request_otp(payload: OtpRequestIn):
 
 
 @app.post("/api/auth/verify-otp")
-def verify_otp(payload: OtpVerifyIn):
+def verify_otp(payload: OtpVerifyIn, request: Request, response: Response):
     phone = payload.phone.strip()
     code = payload.otp.strip()
     if not re.match(r"^\d{10}$", phone) or not re.match(r"^\d{6}$", code):
@@ -756,17 +945,19 @@ def verify_otp(payload: OtpVerifyIn):
     finally:
         conn.close()
     name = payload.name.strip() or f"Lender {phone[-4:]}"
-    sess = _make_session(phone, name, "lender", 7)
+    profile, token = _make_session(phone, name, "lender", 7, request=request)
+    _set_session_cookie(response, request, token, 7)
     _audit_event("auth_login", f"{name} ({phone})", {"method": "otp"})
-    return {"ok": True, **sess}
+    return {"ok": True, **profile}
 
 
 @app.post("/api/auth/guest")
-def guest_login(payload: GuestIn):
+def guest_login(payload: GuestIn, request: Request, response: Response):
     name = payload.name.strip() or "Guest"
-    sess = _make_session("guest", name, "guest", 1)
+    profile, token = _make_session("guest", name, "guest", 1, request=request)
+    _set_session_cookie(response, request, token, 1)
     _audit_event("auth_login", f"{name} (guest)", {"method": "guest"})
-    return {"ok": True, **sess}
+    return {"ok": True, **profile}
 
 
 # ---------------- Email auth: password + real Gmail OTP ----------------
@@ -922,7 +1113,7 @@ def register(payload: RegisterIn):
 
 
 @app.post("/api/auth/verify-email")
-def verify_email(payload: VerifyEmailIn):
+def verify_email(payload: VerifyEmailIn, request: Request, response: Response):
     email = payload.email.strip().lower()
     conn = db()
     try:
@@ -931,17 +1122,23 @@ def verify_email(payload: VerifyEmailIn):
         if not row:
             raise HTTPException(400, "Account not found. Please register first.")
         conn.execute("UPDATE users SET email_verified=1 WHERE email=?", (email,))
+        # Registration proves this device: future logins skip OTP on it.
+        _record_device(conn, email, request, verified=1)
         conn.commit()
         name = row["name"]
     finally:
         conn.close()
-    sess = _make_session(email, name, "lender", 7, email=email)
+    profile, token = _make_session(email, name, "lender", 7, email=email,
+                                   request=request, device_hash=_device_hash(request))
+    _set_session_cookie(response, request, token, 7)
     _audit_event("auth_login", f"{name} ({email})", {"method": "email-register"})
-    return {"ok": True, **sess}
+    return {"ok": True, **profile}
 
 
 @app.post("/api/auth/login")
-def email_login(payload: LoginIn):
+def email_login(payload: LoginIn, request: Request, response: Response):
+    """Email + Password. OTP is demanded ONLY on a new/unverified device —
+    verified devices (and post-logout return visits) sign straight in."""
     email = payload.email.strip().lower()
     lock = LOGIN_LOCKS.get(email)
     if lock and lock[1] > time.time():
@@ -960,9 +1157,61 @@ def email_login(payload: LoginIn):
     if not row["email_verified"]:
         raise HTTPException(403, "Email not verified yet. Enter the code sent to your inbox.")
     LOGIN_LOCKS.pop(email, None)
-    sess = _make_session(email, row["name"], "lender", 7, email=email)
+    conn = db()
+    try:
+        if not _device_verified(conn, email, request):
+            # New device (or wiped by a security event): prove the inbox once.
+            recent = conn.execute(
+                "SELECT created_at FROM email_otps WHERE email=? AND purpose='login'"
+                " ORDER BY id DESC LIMIT 1", (email,)).fetchone()
+            if recent and recent["created_at"] > (_now() - timedelta(seconds=60)).isoformat():
+                raise HTTPException(429, "A code was just sent — check your inbox (or wait a minute to resend).")
+            code = _issue_email_otp(conn, email, "login")
+            conn.commit()
+            sent = send_email_otp(email, code, "verify")
+            resp: dict[str, Any] = {
+                "ok": True, "otp_required": True, "email": email, "email_sent": sent,
+                "message": "New device — enter the verification code sent to your email.",
+            }
+            if not sent:
+                resp["demo_otp"] = code
+            _audit_event("auth_otp_challenge", f"{row['name']} ({email})", {"reason": "new-device"})
+            return resp
+    finally:
+        conn.close()
+    profile, token = _make_session(email, row["name"], "lender", 7, email=email,
+                                   request=request, device_hash=_device_hash(request))
+    _set_session_cookie(response, request, token, 7)
     _audit_event("auth_login", f"{row['name']} ({email})", {"method": "email-password"})
-    return {"ok": True, **sess}
+    return {"ok": True, **profile}
+
+
+class VerifyLoginIn(BaseModel):
+    email: str
+    otp: str
+
+
+@app.post("/api/auth/verify-login")
+def verify_login(payload: VerifyLoginIn, request: Request, response: Response):
+    """Complete a new-device login: correct inbox code verifies the device,
+    then behaves exactly like a normal login (fresh 5-minute timer)."""
+    email = payload.email.strip().lower()
+    conn = db()
+    try:
+        _check_email_otp(conn, email, "login", payload.otp.strip())
+        row = conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
+        if not row:
+            raise HTTPException(400, "Account not found.")
+        row = dict(row)
+        _record_device(conn, email, request, verified=1)
+        conn.commit()
+    finally:
+        conn.close()
+    profile, token = _make_session(email, row["name"], "lender", 7, email=email,
+                                   request=request, device_hash=_device_hash(request))
+    _set_session_cookie(response, request, token, 7)
+    _audit_event("auth_login", f"{row['name']} ({email})", {"method": "email-password-new-device"})
+    return {"ok": True, **profile}
 
 
 @app.post("/api/auth/forgot-password")
@@ -999,6 +1248,8 @@ def reset_password(payload: ResetIn):
                      (_hash_password(payload.new_password), email))
         # Sign out everywhere after a password change.
         conn.execute("DELETE FROM sessions WHERE phone=? OR email=?", (email, email))
+        # Security event: every device must re-verify with an inbox code.
+        conn.execute("UPDATE ls_devices SET verified=0 WHERE email=?", (email,))
         conn.commit()
     finally:
         conn.close()
@@ -1016,18 +1267,25 @@ def auth_me(authorization: Optional[str] = Header(default=None)):
 
 
 @app.post("/api/auth/logout")
-def auth_logout(authorization: Optional[str] = Header(default=None)):
+def auth_logout(request: Request, response: Response,
+                authorization: Optional[str] = Header(default=None)):
+    # Session can arrive via cookie (browsers) or Bearer (API clients).
+    tok = None
     if authorization and authorization.startswith("Bearer "):
-        tok = authorization[7:].strip()
-        s = _session_from_header(authorization)
+        tok = authorization[7:].strip() or None
+    if not tok:
+        tok = request.cookies.get(SESSION_COOKIE)
+    s = _session_from_header(f"Bearer {tok}") if tok else None
+    if tok:
         conn = db()
         try:
             conn.execute("DELETE FROM sessions WHERE token=?", (tok,))
             conn.commit()
         finally:
             conn.close()
-        if s:
-            _audit_event("auth_logout", f"{s['display_name']} ({s['phone']})", {})
+    _clear_session_cookie(response)
+    if s:
+        _audit_event("auth_logout", f"{s['display_name']} ({s['phone']})", {})
     return {"ok": True}
 
 
@@ -1051,7 +1309,12 @@ def security_status():
                            "email_password": "pbkdf2-sha256",
                            "email_otp": "gmail-smtp" if _smtp_configured() else "demo-mode",
                            "passwords": "pbkdf2-sha256 (argon2id preferred when available)",
-                           "mfa": "not_configured"},
+                           "sessions": "httponly-samesite-cookies, server-side",
+                           "idle_timeout_sec": IDLE_TIMEOUT_SEC,
+                           "device_otp": "first-login and new-device inbox verification",
+                           "hijack_binding": "session dies when both IP and browser change",
+                           "csrf": "json-body gate + same-origin multipart check",
+                           "mfa": "email-otp-on-new-device"},
         "rbac": {"enabled": True, "roles": ["lender", "guest", "service(api-key)"],
                  "note": "guests are read/analyze-only; policy, reviews, keys and sessions require lender or service role"},
         "rate_limiting": {"enabled": True, "auth_per_min_per_ip": 20,

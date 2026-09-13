@@ -67,7 +67,7 @@ export default function AdminSettings() {
 
   const signOutOthers = async () => {
     if (!guardLender(session, toast)) return;
-    const others = sessions.filter((s) => !s.expired && s.token !== session.token);
+    const others = sessions.filter((s) => !s.expired && !s.current);
     if (!others.length) return;
     if (!window.confirm(`Sign out ${others.length} other session(s)?`)) return;
     try {
@@ -85,7 +85,7 @@ export default function AdminSettings() {
       <PageHeader
         title="Settings"
         description="API keys and system configuration"
-        actions={sessions.some((s) => !s.expired && s.token !== session.token) ? (
+        actions={sessions.some((s) => !s.expired && !s.current) ? (
           <Button variant="secondary" size="sm" onClick={signOutOthers}>Sign out other devices</Button>
         ) : null}
       />
@@ -157,7 +157,7 @@ export default function AdminSettings() {
                 <tbody>
                   {sessions.map((s) => (
                     <tr key={s.token}>
-                      <td><b>{s.display_name}</b> <code style={{ fontSize: 11 }}>{s.token_prefix}</code></td>
+                      <td><b>{s.display_name}</b> <code style={{ fontSize: 11 }}>{s.token_prefix}</code>{s.current ? <span style={{ fontSize: 11, color: "var(--primary)", fontWeight: 700 }}> · this device</span> : ""}</td>
                       <td style={{ textTransform: "capitalize" }}>{s.role}</td>
                       <td style={{ color: "var(--text-muted)", fontSize: 12 }}>{s.phone}</td>
                       <td style={{ color: "var(--text-muted)", fontSize: 12 }}>{new Date(s.created_at + "Z").toLocaleString()}</td>
