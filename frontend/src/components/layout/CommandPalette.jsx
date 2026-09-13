@@ -1,28 +1,32 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth, isGuest } from "../../context/AuthContext";
 import "./CommandPalette.css";
 
 const ROUTES = [
   { label: "Dashboard", path: "/dashboard", hint: "overview" },
   { label: "Borrowers", path: "/borrowers", hint: "G B" },
-  { label: "Loan Requests", path: "/loan-requests", hint: "G L" },
-  { label: "Loans", path: "/loans", hint: "" },
-  { label: "Cases", path: "/cases", hint: "" },
-  { label: "Copilot", path: "/copilot", hint: "" },
-  { label: "Simulations", path: "/simulations", hint: "" },
+  { label: "Loan Requests", path: "/loan-requests", hint: "G L", lender: true },
+  { label: "Loans", path: "/loans", hint: "", lender: true },
+  { label: "Cases", path: "/cases", hint: "", lender: true },
+  { label: "Copilot", path: "/copilot", hint: "", lender: true },
+  { label: "Simulations", path: "/simulations", hint: "", lender: true },
   { label: "Risk Intelligence", path: "/financial-intelligence", hint: "G R" },
   { label: "Fraud Intelligence", path: "/borrowers", hint: "G F" },
   { label: "Graph Intelligence", path: "/financial-intelligence", hint: "G G" },
   { label: "Financial Intelligence", path: "/financial-intelligence", hint: "" },
-  { label: "Approvals", path: "/admin/approvals", hint: "" },
-  { label: "Background Jobs", path: "/admin/jobs", hint: "" },
-  { label: "Model Performance", path: "/admin/model", hint: "" },
-  { label: "Security Center", path: "/security", hint: "" },
+  { label: "Approvals", path: "/admin/approvals", hint: "", lender: true },
+  { label: "Background Jobs", path: "/admin/jobs", hint: "", lender: true },
+  { label: "Model Performance", path: "/admin/model", hint: "", lender: true },
+  { label: "Security Center", path: "/security", hint: "", lender: true },
 ];
 
 /** Global command palette (Cmd/Ctrl+K) + G-key sequences + Esc. */
 export default function CommandPalette() {
   const navigate = useNavigate();
+  const { session } = useAuth();
+  const guest = isGuest(session);
+  const VISIBLE = ROUTES.filter((r) => !(guest && r.lender));
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
@@ -71,7 +75,7 @@ export default function CommandPalette() {
   if (!open) return null;
   const ql = q.toLowerCase();
   const bidMatch = q.match(/^\s*([A-Za-z]{1,4}-?\d{1,6})\s*$/);
-  const items = ROUTES.filter((r) => !ql || r.label.toLowerCase().includes(ql) || r.hint.toLowerCase().includes(ql)).slice(0, 9);
+  const items = VISIBLE.filter((r) => !ql || r.label.toLowerCase().includes(ql) || r.hint.toLowerCase().includes(ql)).slice(0, 9);
 
   const go = (path) => {
     setOpen(false);

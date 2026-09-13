@@ -141,7 +141,7 @@ export default function BorrowerDetails() {
               else { await navigator.clipboard.writeText(url); toast.success("Link copied"); }
             } catch { /* dismissed */ }
           }}>↗ Share</Button>
-          <Button variant="primary" size="sm" onClick={reRun}>↻ Re-run</Button>
+          <Button variant="primary" size="sm" onClick={reRun} disabled={session?.role === "guest"} title={session?.role === "guest" ? "Sign in with Phone OTP for lender actions" : "Re-run analysis"}>↻ Re-run</Button>
           <Button variant="primary" size="sm" onClick={async () => {
             if (session?.role === "guest") return toast.error("Guests are read-only — sign in with Phone OTP for lender actions");
             try {

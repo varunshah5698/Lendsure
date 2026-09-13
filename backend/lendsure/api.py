@@ -100,16 +100,19 @@ def actor_of(authorization: Optional[str], x_api_key: Optional[str] = None) -> s
 # or service (API-key) role. Every check below goes through require_perm —
 # never inline `role == ...` comparisons in endpoints.
 ROLE_PERMS = {
-    "guest": {"borrower.read", "analysis.read", "analysis.run", "simulation.run",
-              "finance.read", "admin.read", "loan.read", "graph.read"},
+    # Guests are heavily restrained: read-only view of borrowers, their
+    # analyses and market data. No runs, no loans, no governance, no copilot.
+    "guest": {"borrower.read", "analysis.read", "finance.read", "graph.read"},
     "lender": {"borrower.read", "borrower.create", "analysis.read", "analysis.run",
                "simulation.run", "finance.read", "admin.read", "loan.read", "graph.read",
+               "copilot.ask",
                "documents.write", "policy.update", "review.decide",
                "keys.manage", "sessions.revoke",
                "loan_request.create", "loan_request.decide", "repayment.record",
                "jobs.manage", "cases.manage"},
     "service": {"borrower.read", "borrower.create", "analysis.read", "analysis.run",
                 "simulation.run", "finance.read", "admin.read", "loan.read", "graph.read",
+                "copilot.ask",
                 "documents.write", "policy.update", "review.decide",
                 "keys.manage", "sessions.revoke",
                 "loan_request.create", "loan_request.decide", "repayment.record",
@@ -262,7 +265,9 @@ def dashboard_trends():
 @router.get("/borrowers")
 def list_borrowers(q: str = "", risk: str = "all", verification: str = "all",
                    city: str = "all", employment: str = "all",
-                   sort: str = "trust_desc", page: int = 1, page_size: int = 12):
+                   sort: str = "trust_desc", page: int = 1, page_size: int = 12,
+                   authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
+    require_perm(authorization, x_api_key, "borrower.read")
     page_size = max(1, min(page_size, 50))
     conn = _DB()
     try:
@@ -307,7 +312,8 @@ def list_borrowers(q: str = "", risk: str = "all", verification: str = "all",
 
 
 @router.get("/borrowers/{bid}")
-def get_borrower(bid: str):
+def get_borrower(bid: str, authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
+    require_perm(authorization, x_api_key, "borrower.read")
     conn = _DB()
     try:
         b = conn.execute("SELECT * FROM ls_borrowers WHERE borrower_id=?", (bid,)).fetchone()
@@ -323,7 +329,8 @@ def get_borrower(bid: str):
 
 
 @router.get("/borrowers/{bid}/financials")
-def get_financials(bid: str):
+def get_financials(bid: str, authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
+    require_perm(authorization, x_api_key, "borrower.read")
     conn = _DB()
     try:
         rows = [dict(r) for r in conn.execute(
@@ -372,6 +379,7 @@ def _persist_analysis(conn, bid: str, res: dict, actor: str) -> int:
 
 @router.post("/borrowers/{bid}/analyze")
 def analyze_borrower(bid: str, authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
+    require_perm(authorization, x_api_key, "analysis.run")
     conn = _DB()
     try:
         b = conn.execute("SELECT * FROM ls_borrowers WHERE borrower_id=?", (bid,)).fetchone()
@@ -435,7 +443,8 @@ def _latest_full(conn, bid: str) -> dict:
 
 
 @router.get("/borrowers/{bid}/analysis")
-def get_analysis(bid: str):
+def get_analysis(bid: str, authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
+    require_perm(authorization, x_api_key, "analysis.read")
     conn = _DB()
     try:
         return _latest_full(conn, bid)
@@ -444,7 +453,8 @@ def get_analysis(bid: str):
 
 
 @router.get("/borrowers/{bid}/evidence")
-def get_evidence(bid: str):
+def get_evidence(bid: str, authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
+    require_perm(authorization, x_api_key, "analysis.read")
     conn = _DB()
     try:
         a = conn.execute("SELECT id FROM ls_analyses WHERE borrower_id=? ORDER BY id DESC LIMIT 1", (bid,)).fetchone()
@@ -461,7 +471,8 @@ def get_evidence(bid: str):
 
 
 @router.get("/borrowers/{bid}/recommendation")
-def get_recommendation(bid: str):
+def get_recommendation(bid: str, authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
+    require_perm(authorization, x_api_key, "analysis.read")
     conn = _DB()
     try:
         a = conn.execute("SELECT id FROM ls_analyses WHERE borrower_id=? ORDER BY id DESC LIMIT 1", (bid,)).fetchone()
@@ -482,6 +493,7 @@ class SimulateIn(BaseModel):
 
 @router.post("/recommendations/simulate")
 def simulate(sim: SimulateIn, authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
+    require_perm(authorization, x_api_key, "simulation.run")
     conn = _DB()
     try:
         b = conn.execute("SELECT * FROM ls_borrowers WHERE borrower_id=?", (sim.borrower_id,)).fetchone()
@@ -507,7 +519,8 @@ def simulate(sim: SimulateIn, authorization: str | None = Header(default=None), 
 
 
 @router.get("/borrowers/{bid}/audit")
-def get_audit(bid: str):
+def get_audit(bid: str, authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
+    require_perm(authorization, x_api_key, "analysis.read")
     conn = _DB()
     try:
         return [dict(r) for r in conn.execute(
@@ -527,7 +540,8 @@ class DocIn(BaseModel):
 
 
 @router.get("/borrowers/{bid}/documents")
-def get_documents(bid: str):
+def get_documents(bid: str, authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
+    require_perm(authorization, x_api_key, "borrower.read")
     conn = _DB()
     try:
         return [dict(r) for r in conn.execute("SELECT * FROM ls_documents WHERE borrower_id=?", (bid,))]
@@ -668,7 +682,8 @@ def patch_document(doc_id: int, patch: DocPatch, authorization: str | None = Hea
 # ---------------- admin ----------------
 
 @router.get("/admin/stats")
-def admin_stats():
+def admin_stats(authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
+    require_perm(authorization, x_api_key, "admin.read")
     conn = _DB()
     try:
         nb = conn.execute("SELECT COUNT(*) c FROM ls_borrowers").fetchone()["c"]
@@ -687,7 +702,8 @@ def admin_stats():
 
 
 @router.get("/admin/config")
-def get_config():
+def get_config(authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
+    require_perm(authorization, x_api_key, "admin.read")
     conn = _DB()
     try:
         return cfg_all(conn)
@@ -720,7 +736,8 @@ def put_config(item: ConfigIn, authorization: str | None = Header(default=None),
 
 
 @router.get("/admin/model")
-def admin_model():
+def admin_model(authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
+    require_perm(authorization, x_api_key, "admin.read")
     from . import ml as _ml
     m = _ml.metrics()
     m["loaded"] = _ml.loaded()
@@ -738,7 +755,8 @@ def _active_model_version() -> str:
 
 
 @router.get("/admin/audit")
-def admin_audit(limit: int = 50):
+def admin_audit(limit: int = 50, authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
+    require_perm(authorization, x_api_key, "admin.read")
     conn = _DB()
     try:
         return [dict(r) for r in conn.execute("SELECT * FROM ls_audit ORDER BY id DESC LIMIT ?", (min(limit, 200),))]
@@ -765,7 +783,8 @@ _LATEST_JOIN = ("ls_analyses a JOIN (SELECT borrower_id, MAX(id) m FROM ls_analy
 
 
 @router.get("/admin/overview")
-def admin_overview():
+def admin_overview(authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
+    require_perm(authorization, x_api_key, "admin.read")
     conn = _DB()
     try:
         _ensure_review_cols(conn)
@@ -818,7 +837,9 @@ def admin_overview():
 # ---------------- admin: approvals ----------------
 
 @router.get("/admin/approvals")
-def admin_approvals(decision: str = "all", q: str = "", page: int = 1, page_size: int = 12):
+def admin_approvals(decision: str = "all", q: str = "", page: int = 1, page_size: int = 12,
+                    authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
+    require_perm(authorization, x_api_key, "admin.read")
     page_size = max(1, min(page_size, 50))
     q = (q or "")[:80]
     conn = _DB()
@@ -894,7 +915,8 @@ def review_approval(aid: int, item: ReviewIn,
 # ---------------- admin: sessions ----------------
 
 @router.get("/admin/sessions")
-def admin_sessions():
+def admin_sessions(authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
+    require_perm(authorization, x_api_key, "admin.read")
     # sessions table lives in the app DB, not the lendsure module DB handle —
     # both point at the same file, so query through this connection.
     conn = _DB()
@@ -954,14 +976,16 @@ def _ensure_registry(conn):
 
 
 @router.get("/admin/features")
-def admin_features():
+def admin_features(authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
+    require_perm(authorization, x_api_key, "admin.read")
     from .feature_dict import ENGINEERED_DICT, FEATURES, GROUPS
     return {"groups": GROUPS, "features": FEATURES, "engineered": ENGINEERED_DICT,
             "count_raw": len(FEATURES), "count_engineered": len(ENGINEERED_DICT)}
 
 
 @router.get("/admin/registry")
-def admin_registry():
+def admin_registry(authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
+    require_perm(authorization, x_api_key, "admin.read")
     conn = _DB()
     try:
         _ensure_registry(conn)

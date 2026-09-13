@@ -215,7 +215,7 @@ def answer(conn, q: str) -> dict:
 @router.post("/copilot/ask")
 def ask(body: AskIn, authorization: Optional[str] = Header(default=None),
         x_api_key: Optional[str] = Header(default=None)):
-    _need(authorization, x_api_key, "analysis.read")
+    _need(authorization, x_api_key, "copilot.ask")
     conn = _DB()
     try:
         out = answer(conn, body.question.strip().lower())

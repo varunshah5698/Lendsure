@@ -1,19 +1,20 @@
 import { NavLink } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
+import { useAuth, isGuest } from "../../context/AuthContext";
 import Logo from "../ui/Logo";
 import "./Sidebar.css";
 
+// lender: true = hidden from guest sessions (heavily restrained role).
 const NAV = [
   { section: "Overview", items: [
     { label: "Dashboard", path: "/dashboard", icon: "📊" },
     { label: "Borrowers", path: "/borrowers", icon: "👥" },
-    { label: "Copilot", path: "/copilot", icon: "🧠" },
+    { label: "Copilot", path: "/copilot", icon: "🧠", lender: true },
   ]},
   { section: "Lending", items: [
-    { label: "Loan Requests", path: "/loan-requests", icon: "📝" },
-    { label: "Loans", path: "/loans", icon: "💰" },
-    { label: "Cases", path: "/cases", icon: "📁" },
-    { label: "Simulations", path: "/simulations", icon: "🧪" },
+    { label: "Loan Requests", path: "/loan-requests", icon: "📝", lender: true },
+    { label: "Loans", path: "/loans", icon: "💰", lender: true },
+    { label: "Cases", path: "/cases", icon: "📁", lender: true },
+    { label: "Simulations", path: "/simulations", icon: "🧪", lender: true },
   ]},
   { section: "Financial Intelligence", items: [
     { label: "Overview", path: "/financial-intelligence", icon: "🌐" },
@@ -24,19 +25,23 @@ const NAV = [
     { label: "Watchlist", path: "/financial-intelligence/watchlist", icon: "⭐" },
     { label: "Alerts", path: "/financial-intelligence/alerts", icon: "🔔" },
   ]},
-  { section: "Governance", items: [
-    { label: "Admin Overview", path: "/admin/overview", icon: "🛡" },
-    { label: "Approvals", path: "/admin/approvals", icon: "✅" },
-    { label: "Background Jobs", path: "/admin/jobs", icon: "⚙️" },
-    { label: "Security Center", path: "/security", icon: "🔒" },
-    { label: "Model Performance", path: "/admin/model", icon: "🤖" },
-    { label: "Risk Policies", path: "/admin/policies", icon: "⚙" },
-    { label: "Settings", path: "/admin/settings", icon: "🔧" },
+  { section: "Governance", lender: true, items: [
+    { label: "Admin Overview", path: "/admin/overview", icon: "🛡", lender: true },
+    { label: "Approvals", path: "/admin/approvals", icon: "✅", lender: true },
+    { label: "Background Jobs", path: "/admin/jobs", icon: "⚙️", lender: true },
+    { label: "Security Center", path: "/security", icon: "🔒", lender: true },
+    { label: "Model Performance", path: "/admin/model", icon: "🤖", lender: true },
+    { label: "Risk Policies", path: "/admin/policies", icon: "⚙", lender: true },
+    { label: "Settings", path: "/admin/settings", icon: "🔧", lender: true },
   ]},
 ];
 
 export default function Sidebar({ collapsed, onToggle }) {
   const { session, signOut } = useAuth();
+  const guest = isGuest(session);
+  const groups = NAV.filter((g) => !(guest && g.lender))
+    .map((g) => ({ ...g, items: g.items.filter((i) => !(guest && i.lender)) }))
+    .filter((g) => g.items.length);
 
   return (
     <aside className={`sidebar ${collapsed ? "sidebar-collapsed" : ""}`}>
@@ -51,7 +56,7 @@ export default function Sidebar({ collapsed, onToggle }) {
       </div>
 
       <nav className="sidebar-nav">
-        {NAV.map((group) => (
+        {groups.map((group) => (
           <div key={group.section} className="sidebar-group">
             {!collapsed && <div className="sidebar-group-label">{group.section}</div>}
             {group.items.map((item) => (

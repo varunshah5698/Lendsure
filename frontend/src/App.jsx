@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
-import { AuthProvider, useAuth } from "./context/AuthContext";
+import { AuthProvider, useAuth, isGuest } from "./context/AuthContext";
 import { ToastProvider } from "./components/ui/Toast";
 import Sidebar from "./components/layout/Sidebar";
 import Topbar from "./components/layout/Topbar";
@@ -45,6 +45,14 @@ function RequireAuth({ children }) {
   return children;
 }
 
+// Lender-only pages: guests are bounced back to the dashboard.
+// (The backend enforces the same boundary with 403s — this just hides it.)
+function RequireLender({ children }) {
+  const { session } = useAuth();
+  if (isGuest(session)) return <Navigate to="/dashboard" replace />;
+  return children;
+}
+
 function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [search, setSearch] = useState("");
@@ -72,13 +80,13 @@ function AppLayout() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/borrowers" element={<Borrowers searchQuery={search} />} />
             <Route path="/borrower/:id" element={<BorrowerDetails />} />
-            <Route path="/loan-requests" element={<LoanRequests />} />
-            <Route path="/loan-requests/:id" element={<LoanRequestDetail />} />
-            <Route path="/loans" element={<Loans />} />
-            <Route path="/loans/:id" element={<LoanDetail />} />
-            <Route path="/cases" element={<Cases />} />
-            <Route path="/copilot" element={<Copilot />} />
-            <Route path="/simulations" element={<Simulations />} />
+            <Route path="/loan-requests" element={<RequireLender><LoanRequests /></RequireLender>} />
+            <Route path="/loan-requests/:id" element={<RequireLender><LoanRequestDetail /></RequireLender>} />
+            <Route path="/loans" element={<RequireLender><Loans /></RequireLender>} />
+            <Route path="/loans/:id" element={<RequireLender><LoanDetail /></RequireLender>} />
+            <Route path="/cases" element={<RequireLender><Cases /></RequireLender>} />
+            <Route path="/copilot" element={<RequireLender><Copilot /></RequireLender>} />
+            <Route path="/simulations" element={<RequireLender><Simulations /></RequireLender>} />
             <Route path="/financial-intelligence" element={<FinancialOverview />} />
             <Route path="/financial-intelligence/news" element={<FinancialNews />} />
             <Route path="/financial-intelligence/news/:id" element={<FinancialNewsArticle />} />
@@ -89,13 +97,13 @@ function AppLayout() {
             <Route path="/financial-intelligence/watchlist" element={<FinancialWatchlist />} />
             <Route path="/financial-intelligence/alerts" element={<FinancialAlerts />} />
             <Route path="/financial-intelligence/sources" element={<FinancialSources />} />
-            <Route path="/security" element={<Security />} />
-            <Route path="/admin/overview" element={<AdminOverview />} />
-            <Route path="/admin/approvals" element={<AdminApprovals />} />
-            <Route path="/admin/model" element={<AdminModel />} />
-            <Route path="/admin/policies" element={<AdminPolicies />} />
-            <Route path="/admin/settings" element={<AdminSettings />} />
-            <Route path="/admin/jobs" element={<AdminJobs />} />
+            <Route path="/security" element={<RequireLender><Security /></RequireLender>} />
+            <Route path="/admin/overview" element={<RequireLender><AdminOverview /></RequireLender>} />
+            <Route path="/admin/approvals" element={<RequireLender><AdminApprovals /></RequireLender>} />
+            <Route path="/admin/model" element={<RequireLender><AdminModel /></RequireLender>} />
+            <Route path="/admin/policies" element={<RequireLender><AdminPolicies /></RequireLender>} />
+            <Route path="/admin/settings" element={<RequireLender><AdminSettings /></RequireLender>} />
+            <Route path="/admin/jobs" element={<RequireLender><AdminJobs /></RequireLender>} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
           </ErrorBoundary>
