@@ -425,6 +425,7 @@ function Footer() {
             <div className="lp-footer-col-title">Resources</div>
             <a href="#product">Documentation</a>
             <a href="#security">Security</a>
+            <Link to="/grievance" style={{ color: "inherit" }}>File a complaint</Link>
             <a href="#product">Contact</a>
           </div>
           <div className="lp-footer-col">

@@ -235,6 +235,47 @@ export const cases = {
   get: (id, token) => api(`/ls/cases/${id}`, {}, token),
   create: (data, token) => api("/ls/cases", { method: "POST", body: JSON.stringify(data) }, token),
   resolve: (id, token) => api(`/ls/cases/${id}/resolve`, { method: "POST" }, token),
+  assign: (id, officer_phone, token) =>
+    api(`/ls/cases/${id}/assign`, { method: "POST", body: JSON.stringify({ officer_phone }) }, token),
+  transferRequest: (id, data, token) =>
+    api(`/ls/cases/${id}/transfer-request`, { method: "POST", body: JSON.stringify(data) }, token),
+  transferReview: (id, data, token) =>
+    api(`/ls/cases/${id}/transfer-review`, { method: "POST", body: JSON.stringify(data) }, token),
+  transfers: (id, token) => api(`/ls/cases/${id}/transfers`, {}, token),
+  transferQueue: (params = {}, token) => {
+    const q = new URLSearchParams(params).toString();
+    return api(`/ls/transfers${q ? `?${q}` : ""}`, {}, token);
+  },
+};
+
+// Recovery officers + territories
+export const officers = {
+  list: (token) => api("/ls/officers", {}, token),
+  create: (data, token) =>
+    api("/ls/officers", { method: "POST", body: JSON.stringify(data) }, token),
+  update: (id, data, token) =>
+    api(`/ls/officers/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+  me: (token) => api("/ls/officers/me", {}, token),
+  territory: (token) => api("/ls/territory/summary", {}, token),
+};
+
+// Borrower grievance portal
+export const grievances = {
+  create: (data) =>
+    api("/ls/grievances", { method: "POST", body: JSON.stringify(data) }),
+  track: (ticket_id, phone) =>
+    api(`/ls/grievances/track?ticket_id=${encodeURIComponent(ticket_id)}&phone=${encodeURIComponent(phone)}`),
+  list: (params = {}, token) => {
+    const q = new URLSearchParams(params).toString();
+    return api(`/ls/grievances${q ? `?${q}` : ""}`, {}, token);
+  },
+  get: (id, token) => api(`/ls/grievances/${id}`, {}, token),
+  note: (id, note, token) =>
+    api(`/ls/grievances/${id}/notes`, { method: "POST", body: JSON.stringify({ note }) }, token),
+  assign: (id, officer_phone, token) =>
+    api(`/ls/grievances/${id}/assign`, { method: "POST", body: JSON.stringify({ officer_phone }) }, token),
+  setStatus: (id, status, note, token) =>
+    api(`/ls/grievances/${id}/status`, { method: "POST", body: JSON.stringify({ status, note: note || "" }) }, token),
 };
 
 // Intelligence: health, monitoring, history, warnings, portfolio

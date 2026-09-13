@@ -15,10 +15,12 @@ const NAV = [
     { label: "Loan Requests", path: "/loan-requests", icon: "file-text", lender: true },
     { label: "Loans", path: "/loans", icon: "cash", lender: true },
     { label: "Cases", path: "/cases", icon: "folder", lender: true },
+    { label: "Grievances", path: "/grievances", icon: "shield-check", lender: true },
     { label: "Simulations", path: "/simulations", icon: "flask", lender: true },
   ]},
   { section: "Governance", lender: true, items: [
     { label: "Admin Overview", path: "/admin/overview", icon: "shield", lender: true },
+    { label: "Recovery Officers", path: "/admin/officers", icon: "users", lender: true },
     { label: "Approvals", path: "/admin/approvals", icon: "check-circle", lender: true },
     { label: "Background Jobs", path: "/admin/jobs", icon: "clock", lender: true },
     { label: "Security Center", path: "/security", icon: "lock", lender: true },

@@ -245,6 +245,54 @@ CREATE TABLE IF NOT EXISTS ls_predictions (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_pred_t ON ls_predictions (created_at);
+CREATE TABLE IF NOT EXISTS ls_officers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    phone TEXT NOT NULL UNIQUE,
+    city TEXT NOT NULL,
+    active INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_off_c ON ls_officers (city);
+CREATE TABLE IF NOT EXISTS ls_case_transfers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_id INTEGER NOT NULL,
+    from_city TEXT DEFAULT '',
+    to_city TEXT NOT NULL,
+    requested_by TEXT DEFAULT '',
+    decided_by TEXT DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'REQUESTED',
+    note TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    decided_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ct_c ON ls_case_transfers (case_id);
+CREATE TABLE IF NOT EXISTS ls_grievances (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id TEXT NOT NULL UNIQUE,
+    borrower_id TEXT DEFAULT '',
+    name TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'other',
+    subject TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    priority TEXT NOT NULL DEFAULT 'NORMAL',
+    status TEXT NOT NULL DEFAULT 'OPEN',
+    assigned_to TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    resolved_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_gr_t ON ls_grievances (ticket_id);
+CREATE INDEX IF NOT EXISTS idx_gr_s ON ls_grievances (status);
+CREATE TABLE IF NOT EXISTS ls_grievance_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    grievance_id INTEGER NOT NULL,
+    actor TEXT NOT NULL,
+    note TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gn_g ON ls_grievance_notes (grievance_id);
 """
 
 # Column migrations for existing tables (each applied once, failures ignored).
@@ -259,6 +307,9 @@ LS_MIGRATIONS = [
     "ALTER TABLE ls_documents ADD COLUMN ocr_status TEXT DEFAULT 'NOT_AVAILABLE'",
     "ALTER TABLE ls_documents ADD COLUMN scan_status TEXT DEFAULT 'NOT_AVAILABLE'",
     "ALTER TABLE ls_documents ADD COLUMN content_hash TEXT DEFAULT ''",
+    "ALTER TABLE ls_cases ADD COLUMN assigned_to TEXT DEFAULT ''",
+    "ALTER TABLE ls_cases ADD COLUMN city TEXT DEFAULT ''",
+    "ALTER TABLE ls_cases ADD COLUMN transfer_status TEXT DEFAULT 'NONE'",
 ]
 
 DEFAULT_CONFIG = {

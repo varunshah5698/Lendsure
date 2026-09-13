@@ -325,6 +325,14 @@ from lendsure import simulate as sim_api  # noqa: E402
 sim_api.configure(db, _ls_session)
 app.include_router(sim_api.router)
 
+from lendsure import recovery as rec_api  # noqa: E402
+rec_api.configure(db, _ls_session)
+app.include_router(rec_api.router)
+
+from lendsure import grievance as grv_api  # noqa: E402
+grv_api.configure(db, _ls_session)
+app.include_router(grv_api.router)
+
 # ---------------- Models ----------------
 
 class BorrowerIn(BaseModel):

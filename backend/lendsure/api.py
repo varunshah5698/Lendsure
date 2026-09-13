@@ -109,14 +109,16 @@ ROLE_PERMS = {
                "documents.write", "policy.update", "review.decide",
                "keys.manage", "sessions.revoke",
                "loan_request.create", "loan_request.decide", "repayment.record",
-               "jobs.manage", "cases.manage"},
+               "jobs.manage", "cases.manage", "officer.manage",
+               "grievance.read", "grievance.manage"},
     "service": {"borrower.read", "borrower.create", "analysis.read", "analysis.run",
                 "simulation.run", "finance.read", "admin.read", "loan.read", "graph.read",
                 "copilot.ask",
                 "documents.write", "policy.update", "review.decide",
                 "keys.manage", "sessions.revoke",
                 "loan_request.create", "loan_request.decide", "repayment.record",
-                "jobs.manage", "cases.manage"},
+                "jobs.manage", "cases.manage", "officer.manage",
+                "grievance.read", "grievance.manage"},
 }
 
 

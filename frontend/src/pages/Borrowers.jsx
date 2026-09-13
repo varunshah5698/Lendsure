@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../components/ui/Toast";
-import { borrowers, inr } from "../lib/api";
+import { borrowers, inr, officers } from "../lib/api";
 import { downloadCSV } from "../lib/export";
 import SearchInput from "../components/ui/SearchInput";
 import Avatar from "../components/ui/Avatar";
@@ -28,6 +28,17 @@ export default function Borrowers({ searchQuery = "" }) {
   const [error, setError] = useState(null);
   const [cities, setCities] = useState([]);
   const [employments, setEmployments] = useState([]);
+  const [territory, setTerritory] = useState(null);
+
+  // Recovery officers open on their assigned city by default.
+  useEffect(() => {
+    officers.me(session.token)
+      .then((o) => {
+        setTerritory(o);
+        setFilters((prev) => (prev.city === "all" ? { ...prev, city: o.city, page: 1 } : prev));
+      })
+      .catch(() => {});
+  }, [session?.token]);
 
   // Sync global topbar search into the local query filter
   useEffect(() => {
@@ -70,7 +81,9 @@ export default function Borrowers({ searchQuery = "" }) {
     <div>
       <PageHeader
         title="Borrowers"
-        description={`Search, filter and sort the full ${data?.total?.toLocaleString() || "..."}-borrower portfolio`}
+        description={territory
+          ? `My territory: ${territory.city} · showing local borrowers first (switch to All cities anytime)`
+          : `Search, filter and sort the full ${data?.total?.toLocaleString() || "..."}-borrower portfolio`}
         actions={data?.rows?.length ? (
           <Button variant="secondary" size="sm" onClick={() => {
             downloadCSV("borrowers.csv", data.rows);

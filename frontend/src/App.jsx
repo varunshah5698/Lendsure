@@ -19,6 +19,11 @@ import LoanDetail from "./pages/LoanDetail";
 import Cases from "./pages/Cases";
 import Copilot from "./pages/Copilot";
 import Simulations from "./pages/Simulations";
+import Officers from "./pages/Officers";
+import Grievance from "./pages/Grievance";
+import GrievanceTrack from "./pages/GrievanceTrack";
+import Grievances from "./pages/Grievances";
+import GrievanceDetail from "./pages/GrievanceDetail";
 import Security from "./pages/Security";
 import AdminModel from "./pages/AdminModel";
 import AdminOverview from "./pages/AdminOverview";
@@ -75,10 +80,13 @@ function AppLayout() {
             <Route path="/loans" element={<RequireLender><Loans /></RequireLender>} />
             <Route path="/loans/:id" element={<RequireLender><LoanDetail /></RequireLender>} />
             <Route path="/cases" element={<RequireLender><Cases /></RequireLender>} />
+            <Route path="/grievances" element={<RequireLender><Grievances /></RequireLender>} />
+            <Route path="/grievances/:id" element={<RequireLender><GrievanceDetail /></RequireLender>} />
             <Route path="/copilot" element={<RequireLender><Copilot /></RequireLender>} />
             <Route path="/simulations" element={<RequireLender><Simulations /></RequireLender>} />
             <Route path="/security" element={<RequireLender><Security /></RequireLender>} />
             <Route path="/admin/overview" element={<RequireLender><AdminOverview /></RequireLender>} />
+            <Route path="/admin/officers" element={<RequireLender><Officers /></RequireLender>} />
             <Route path="/admin/approvals" element={<RequireLender><AdminApprovals /></RequireLender>} />
             <Route path="/admin/model" element={<RequireLender><AdminModel /></RequireLender>} />
             <Route path="/admin/policies" element={<RequireLender><AdminPolicies /></RequireLender>} />
@@ -103,6 +111,8 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/grievance" element={<Grievance />} />
+            <Route path="/grievance/track" element={<GrievanceTrack />} />
             <Route path="/*" element={<RequireAuth><AppLayout /></RequireAuth>} />
           </Routes>
         </ToastProvider>

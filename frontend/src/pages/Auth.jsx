@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import Button from "../components/ui/Button";
 import Logo from "../components/ui/Logo";
@@ -134,6 +134,9 @@ export default function Auth() {
             <p className="auth-hint">Guest sessions last 24 hours and are labelled in the audit trail.</p>
           </div>
         )}
+        <p className="auth-hint" style={{ textAlign: "center", marginTop: 14 }}>
+          Have a complaint? <Link to="/grievance" className="link-btn">File it here</Link> · <Link to="/grievance/track" className="link-btn">Track a ticket</Link>
+        </p>
       </div>
     </div>
   );
