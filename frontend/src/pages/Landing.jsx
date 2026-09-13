@@ -387,10 +387,10 @@ function SecuritySection() {
 function FinalCTA() {
   return (
     <section className="lp-section lp-final-cta">
-      <div className="lp-final-3d">
-        <SafeApprovalWave className="lp-final-scene" />
-      </div>
       <motion.div className="lp-final-content" {...fadeUp}>
+        <div className="lp-final-3d">
+          <SafeApprovalWave className="lp-final-scene" />
+        </div>
         <h2 className="lp-section-title">LEND WITH<br />CONFIDENCE.</h2>
         <p className="lp-section-sub">Turn borrower information into clear, explainable lending intelligence.</p>
         <div className="lp-hero-ctas">
