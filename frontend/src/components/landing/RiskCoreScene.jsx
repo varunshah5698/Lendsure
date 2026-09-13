@@ -24,7 +24,7 @@ function Core() {
   });
   return (
     <mesh ref={ref} material={mat} renderOrder={0}>
-      <icosahedronGeometry args={[1.2, 2]} />
+      <icosahedronGeometry args={[1.2, 5]} />
     </mesh>
   );
 }
