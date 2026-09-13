@@ -215,6 +215,8 @@ def dashboard_metrics():
                 fraud_high += 1
             buckets.append((b, a, vb))
         n = len(borrowers)
+        trust_vals = [a.get("trust_score") for a in analyses.values() if a.get("trust_score") is not None]
+        conf_vals = [a.get("confidence") for a in analyses.values() if a.get("confidence") is not None]
         recent = sorted(
             ((b, analyses[b["borrower_id"]]) for b in borrowers if b["borrower_id"] in analyses),
             key=lambda t: t[1]["id"], reverse=True)[:8]
@@ -223,6 +225,8 @@ def dashboard_metrics():
             "low_risk": risks["LOW"], "medium_risk": risks["MEDIUM"], "high_risk": risks["HIGH"],
             "fraud_high": fraud_high,
             "pending_verification": ver["needs_review"] + ver["suspicious"],
+            "avg_trust": round(sum(trust_vals) / len(trust_vals), 1) if trust_vals else 0,
+            "avg_confidence": round(sum(conf_vals) / len(conf_vals), 1) if conf_vals else 0,
             "risk_distribution": risks, "verification": ver,
             "avg_income": round(sum(b["avg_income_6m"] for b in borrowers) / n),
             "avg_expenses": round(sum(b["avg_expenses_6m"] for b in borrowers) / n),
