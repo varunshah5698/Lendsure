@@ -13,8 +13,8 @@
 .app-main-collapsed { margin-left: 64px; }
 .app-content {
   flex: 1;
-  padding: 24px 28px 40px;
-  max-width: 1200px;
+  padding: 28px 32px 48px;
+  max-width: 1240px;
   width: 100%;
 }
 
