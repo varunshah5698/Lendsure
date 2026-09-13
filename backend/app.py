@@ -333,6 +333,10 @@ from lendsure import grievance as grv_api  # noqa: E402
 grv_api.configure(db, _ls_session)
 app.include_router(grv_api.router)
 
+from lendsure import credit_risk as cr_api  # noqa: E402
+cr_api.configure(db, _ls_session)
+app.include_router(cr_api.router)
+
 # ---------------- Models ----------------
 
 class BorrowerIn(BaseModel):

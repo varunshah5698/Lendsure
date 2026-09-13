@@ -11,6 +11,7 @@ import Badge from "../components/ui/Badge";
 import Card, { CardHeader, CardTitle, CardDescription, CardContent } from "../components/ui/Card";
 import RiskScore from "../components/risk/RiskScore";
 import TrustScoreHero from "../components/risk/TrustScoreHero";
+import CreditRiskPanel from "../components/risk/CreditRiskPanel";
 import Gauge from "../components/risk/Gauge";
 import CopyButton from "../components/ui/CopyButton";
 import { downloadJSON } from "../lib/export";
@@ -167,6 +168,8 @@ export default function BorrowerDetails() {
           analysisId={a.id}
         />
       )}
+
+      <CreditRiskPanel borrowerId={id} token={session.token} />
 
       {a && (
         <div className="bd-hero-metrics">

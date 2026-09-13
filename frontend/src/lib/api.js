@@ -226,6 +226,15 @@ export const notify = {
   ticket: (token) => api("/ls/events/ticket", { method: "POST" }, token),
 };
 
+// Credit-risk ML v4 (trained model — real predictions, never placeholders)
+export const mlCredit = {
+  predict: (borrower_id, token) =>
+    api("/ls/ml/credit/predict", { method: "POST", body: JSON.stringify({ borrower_id }) }, token),
+  predictBatch: (borrower_ids, token) =>
+    api("/ls/ml/credit/predict-batch", { method: "POST", body: JSON.stringify({ borrower_ids }) }, token),
+  model: (token) => api("/ls/ml/credit/model", {}, token),
+};
+
 // Investigation cases
 export const cases = {
   list: (params = {}, token) => {

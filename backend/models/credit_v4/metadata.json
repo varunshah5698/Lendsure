@@ -1,0 +1,183 @@
+{
+ "model_id": "lendsure-credit-v4.0",
+ "trained_at": "2026-09-13T21:36:48.156093+00:00",
+ "data_source": {
+  "real": "UCI Default of Credit Card Clients (Yeh & Lien 2009)",
+  "real_url": "https://archive.ics.uci.edu/static/public/350/default+of+credit+card+clients.zip",
+  "real_sha256": "30c6be3abd8dcfd3e6096c828bad8c2f011238620f5369220bd60cfc82700933",
+  "real_rows": 30000,
+  "real_default_rate": 0.2212,
+  "synthetic_rows": 1000000,
+  "synthetic_default_rate": 0.26249,
+  "synthetic_method": "segment-conditional bootstrap: KMeans(16) on real rows; resample members with replacement; jitter continuous dims only (~5% of std); discrete dims copied exactly; all dims clipped to real p1/p99 (heavy tails winsorized, disclosed); tenure conditioned on age; Indian city mix with documented prior multipliers; labels from real-fitted HGB teacher + 2% flip noise",
+  "real_rows_weight_x20_in_training": true
+ },
+ "splits": {
+  "fit_real": 15000,
+  "select_real": 5000,
+  "test_real": 10000,
+  "seed": 42
+ },
+ "candidates_select_real": {
+  "xgboost": {
+   "pr_auc": 0.5298414905774138,
+   "roc_auc": 0.7568106819876828,
+   "brier": 0.162534171687756,
+   "logloss": 0.5042874412007377,
+   "threshold": 0.22171734273433685,
+   "f2": 0.622067301246816,
+   "precision": 0.3057660626029654,
+   "recall": 0.8390596745027125,
+   "tn": 1787,
+   "fp": 2107,
+   "fn": 178,
+   "tp": 928,
+   "n": 5000,
+   "base_rate": 0.2212
+  },
+  "lightgbm": {
+   "pr_auc": 0.5304436558532516,
+   "roc_auc": 0.7701268284029494,
+   "brier": 0.15578644189583207,
+   "logloss": 0.48930868582510073,
+   "threshold": 0.2663864656803473,
+   "f2": 0.6358954041204438,
+   "precision": 0.3059085133418043,
+   "recall": 0.8707052441229657,
+   "tn": 1709,
+   "fp": 2185,
+   "fn": 143,
+   "tp": 963,
+   "n": 5000,
+   "base_rate": 0.2212
+  },
+  "hgb": {
+   "pr_auc": 0.5403854747745295,
+   "roc_auc": 0.7705001945776456,
+   "brier": 0.17078199227929813,
+   "logloss": 0.5185222738881952,
+   "threshold": 0.26412962723373323,
+   "f2": 0.6356042808666145,
+   "precision": 0.30080296479308216,
+   "recall": 0.8806509945750453,
+   "tn": 1630,
+   "fp": 2264,
+   "fn": 132,
+   "tp": 974,
+   "n": 5000,
+   "base_rate": 0.2212
+  },
+  "random_forest_200k": {
+   "pr_auc": 0.5372141981699909,
+   "roc_auc": 0.7713396879884757,
+   "brier": 0.1634566068944269,
+   "logloss": 0.5020214528346846,
+   "threshold": 0.26307922298107067,
+   "f2": 0.6375793597190328,
+   "precision": 0.31688486069150723,
+   "recall": 0.8535262206148282,
+   "tn": 1859,
+   "fp": 2035,
+   "fn": 162,
+   "tp": 944,
+   "n": 5000,
+   "base_rate": 0.2212
+  }
+ },
+ "selected": "hgb",
+ "selection_criterion": "max PR-AUC on REAL select split (average precision; robust to imbalance)",
+ "threshold_rule": "max F2 (beta=2, missing a default costs more than a false alarm) on REAL select",
+ "test_real_metrics": {
+  "pr_auc": 0.49546542949488187,
+  "roc_auc": 0.7624702096516085,
+  "brier": 0.14176484029083813,
+  "logloss": 0.46661010756647575,
+  "threshold": 0.26412962723373323,
+  "f2": 0.5447994443479771,
+  "precision": 0.4700374531835206,
+  "recall": 0.5673598553345389,
+  "tn": 6373,
+  "fp": 1415,
+  "fn": 957,
+  "tp": 1255,
+  "n": 10000,
+  "base_rate": 0.2212
+ },
+ "test_real_bands": [
+  {
+   "band": "Low",
+   "n": 4884,
+   "share": 0.4884,
+   "default_rate": 0.09357084357084357,
+   "captured_defaults": 0.2066003616636528
+  },
+  {
+   "band": "Medium",
+   "n": 3050,
+   "share": 0.305,
+   "default_rate": 0.2216393442622951,
+   "captured_defaults": 0.30560578661844484
+  },
+  {
+   "band": "High",
+   "n": 1530,
+   "share": 0.153,
+   "default_rate": 0.4673202614379085,
+   "captured_defaults": 0.3232368896925859
+  },
+  {
+   "band": "Critical",
+   "n": 536,
+   "share": 0.0536,
+   "default_rate": 0.6791044776119403,
+   "captured_defaults": 0.16455696202531644
+  }
+ ],
+ "bands": [
+  {
+   "name": "Low",
+   "lo": 0.0,
+   "hi": 0.15
+  },
+  {
+   "name": "Medium",
+   "lo": 0.15,
+   "hi": 0.35
+  },
+  {
+   "name": "High",
+   "lo": 0.35,
+   "hi": 0.6
+  },
+  {
+   "name": "Critical",
+   "lo": 0.6,
+   "hi": 1.01
+  }
+ ],
+ "calibration": "isotonic on REAL select split (prefit)",
+ "feature_notes": {
+  "credit_capacity": "UCI LIMIT_BAL (credit limit, income-correlated) | app avg_income_6m. Different units; pipeline z-scores both.",
+  "loan_amount": "UCI LIMIT_BAL as exposure proxy | app requested_amount.",
+  "dpd_max": "UCI max(PAY_*) | app round(max_days_past_due/30), floor 0.",
+  "dpd_mean": "UCI mean(PAY_*) | app avg_delay_days/30 (may be negative).",
+  "late_count": "UCI #(PAY_*>0) | app late_payments clipped to 0..6.",
+  "severe_count": "UCI #(PAY_*>=2) | app (max_days_past_due>=60) + min(defaults,2).",
+  "utilization": "UCI mean(BILL)/LIMIT | app avg_debt_6m / max(6*avg_income_6m,1), clipped 0..3.",
+  "pay_ratio": "UCI mean(PAY_AMT/max(BILL_AMT,1)) clipped 0..2 | app loans_repaid/max(loans_repaid+late_payments,1).",
+  "pay_volatility": "UCI std(PAY_AMT)/mean(BILL) | app income_volatility/100.",
+  "bill_trend": "UCI (BILL6-BILL1)/mean(BILL) | app debt_trend as stored.",
+  "tenure_months": "Absent from UCI (NaN, median-imputed) | app tenure_months. Learned mostly from synthetic rows.",
+  "city_risk": "Absent from UCI (NaN) | app target-encoded city default prior fitted on TRAIN ONLY. City effect comes from the synthetic prior; reported as weak by design.",
+  "prev_defaults": "UCI #(PAY_*>=3) | app defaults field.",
+  "dti": "UCI BILL_AMT6/max(LIMIT_BAL,1) | app avg_debt_6m/max(avg_income_6m,1), clipped 0..5.",
+  "ontime_rate": "UCI #(PAY_*<0)/6 | app ontime_streak_months/max(ontime+late+1,1) blended with salary_credits_6m/6."
+ },
+ "versions": {
+  "sklearn": "1.7.2",
+  "xgboost": "3.4.1",
+  "lightgbm": "4.7.0",
+  "python": "3.13.9"
+ },
+ "train_seconds": 70.6
+}
