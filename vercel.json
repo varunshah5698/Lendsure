@@ -3,7 +3,7 @@
     "frontend": {
       "root": "frontend",
       "framework": "vite",
-      "buildCommand": "npx vite build --outDir dist",
+      "buildCommand": "npm run build",
       "outputDirectory": "dist"
     },
     "backend": {
