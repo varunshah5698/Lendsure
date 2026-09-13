@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { notify } from "../../lib/api";
+import Icon from "../ui/Icon";
 import "./NotificationBell.css";
 
 /**
@@ -106,7 +107,7 @@ export default function NotificationBell() {
         aria-label="Notifications"
         title={live ? "Live updates connected" : "Notifications (polling)"}
       >
-        <span className="notif-icon">🔔</span>
+        <span className="notif-icon"><Icon name="bell" size={17} /></span>
         {unread > 0 && <span className="notif-badge">{unread > 99 ? "99+" : unread}</span>}
         <span className={`notif-dot ${live ? "notif-live" : "notif-poll"}`} />
       </button>

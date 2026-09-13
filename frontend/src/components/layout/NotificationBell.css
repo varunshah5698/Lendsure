@@ -4,7 +4,7 @@
   border-radius: 10px; padding: 7px 10px; cursor: pointer; display: flex; align-items: center; gap: 6px;
 }
 .notif-btn:hover { border-color: var(--primary); }
-.notif-icon { font-size: 16px; }
+.notif-icon { display: inline-flex; color: var(--text-secondary); }
 .notif-badge {
   position: absolute; top: -7px; right: -7px; min-width: 18px; height: 18px;
   background: #ef4444; color: #fff; font-size: 10px; font-weight: 800;

@@ -22,7 +22,7 @@
 }
 .audit-content { font-size: 13.5px; }
 .audit-header { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
-.audit-action-icon { font-size: 14px; }
+.audit-action-icon { display: inline-flex; color: var(--text-muted); }
 .audit-action { font-weight: 700; }
 .audit-meta { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
 .audit-sep { opacity: .5; }

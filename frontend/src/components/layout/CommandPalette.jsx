@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth, isGuest } from "../../context/AuthContext";
+import Icon from "../ui/Icon";
 import "./CommandPalette.css";
 
 const ROUTES = [
@@ -101,7 +102,7 @@ export default function CommandPalette() {
         <div className="cmd-list">
           {bidMatch && (
             <button className={`cmd-item ${sel === 0 ? "cmd-active" : ""}`} onClick={() => go(`/borrower/${bidMatch[1].toUpperCase()}`)}>
-              <span>👤 Open borrower {bidMatch[1].toUpperCase()}</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Icon name="user" size={15} /> Open borrower {bidMatch[1].toUpperCase()}</span>
             </button>
           )}
           {items.map((r, i) => (

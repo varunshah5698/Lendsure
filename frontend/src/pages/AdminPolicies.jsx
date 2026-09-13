@@ -121,7 +121,7 @@ export default function AdminPolicies() {
 
       {changedKeys.length > 0 && (
         <div className="policy-unsaved">
-          ⚡ {changedKeys.length} unsaved change{changedKeys.length > 1 ? "s" : ""}
+          {changedKeys.length} unsaved change{changedKeys.length > 1 ? "s" : ""}
         </div>
       )}
 

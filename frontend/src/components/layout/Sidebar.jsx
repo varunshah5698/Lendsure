@@ -1,29 +1,30 @@
 import { NavLink } from "react-router-dom";
 import { useAuth, isGuest } from "../../context/AuthContext";
 import Logo from "../ui/Logo";
+import Icon from "../ui/Icon";
 import "./Sidebar.css";
 
 // lender: true = hidden from guest sessions (heavily restrained role).
 const NAV = [
   { section: "Overview", items: [
-    { label: "Dashboard", path: "/dashboard", icon: "📊" },
-    { label: "Borrowers", path: "/borrowers", icon: "👥" },
-    { label: "Copilot", path: "/copilot", icon: "🧠", lender: true },
+    { label: "Dashboard", path: "/dashboard", icon: "grid" },
+    { label: "Borrowers", path: "/borrowers", icon: "users" },
+    { label: "Copilot", path: "/copilot", icon: "cpu", lender: true },
   ]},
   { section: "Lending", items: [
-    { label: "Loan Requests", path: "/loan-requests", icon: "📝", lender: true },
-    { label: "Loans", path: "/loans", icon: "💰", lender: true },
-    { label: "Cases", path: "/cases", icon: "📁", lender: true },
-    { label: "Simulations", path: "/simulations", icon: "🧪", lender: true },
+    { label: "Loan Requests", path: "/loan-requests", icon: "file-text", lender: true },
+    { label: "Loans", path: "/loans", icon: "cash", lender: true },
+    { label: "Cases", path: "/cases", icon: "folder", lender: true },
+    { label: "Simulations", path: "/simulations", icon: "flask", lender: true },
   ]},
   { section: "Governance", lender: true, items: [
-    { label: "Admin Overview", path: "/admin/overview", icon: "🛡", lender: true },
-    { label: "Approvals", path: "/admin/approvals", icon: "✅", lender: true },
-    { label: "Background Jobs", path: "/admin/jobs", icon: "⚙️", lender: true },
-    { label: "Security Center", path: "/security", icon: "🔒", lender: true },
-    { label: "Model Performance", path: "/admin/model", icon: "🤖", lender: true },
-    { label: "Risk Policies", path: "/admin/policies", icon: "⚙", lender: true },
-    { label: "Settings", path: "/admin/settings", icon: "🔧", lender: true },
+    { label: "Admin Overview", path: "/admin/overview", icon: "shield", lender: true },
+    { label: "Approvals", path: "/admin/approvals", icon: "check-circle", lender: true },
+    { label: "Background Jobs", path: "/admin/jobs", icon: "clock", lender: true },
+    { label: "Security Center", path: "/security", icon: "lock", lender: true },
+    { label: "Model Performance", path: "/admin/model", icon: "cpu", lender: true },
+    { label: "Risk Policies", path: "/admin/policies", icon: "sliders", lender: true },
+    { label: "Settings", path: "/admin/settings", icon: "tool", lender: true },
   ]},
 ];
 
@@ -57,7 +58,7 @@ export default function Sidebar({ collapsed, onToggle }) {
                 className={({ isActive }) => `sidebar-link ${isActive ? "sidebar-link-active" : ""}`}
                 title={collapsed ? item.label : undefined}
               >
-                <span className="sidebar-icon">{item.icon}</span>
+                <span className="sidebar-icon"><Icon name={item.icon} size={18} /></span>
                 {!collapsed && <span>{item.label}</span>}
               </NavLink>
             ))}

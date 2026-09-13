@@ -9,6 +9,7 @@ import ErrorState from "../components/ui/ErrorState";
 import { SkeletonCard } from "../components/ui/Skeleton";
 import AuditTimeline from "../components/audit/AuditTimeline";
 import Sparkline from "../components/charts/Sparkline";
+import Icon from "../components/ui/Icon";
 import "./AdminOverview.css";
 
 export default function AdminOverview() {
@@ -130,27 +131,27 @@ export default function AdminOverview() {
           <CardContent>
             <div className="admin-shortcuts">
               <Link to="/admin/approvals?filter=pending" className="admin-shortcut">
-                <span className="admin-shortcut-icon">✅</span>
+                <span className="admin-shortcut-icon"><Icon name="check-circle" size={20} /></span>
                 <span><b>Review approvals</b><small>{data.pending_review} awaiting decision</small></span>
               </Link>
               <Link to="/admin/approvals" className="admin-shortcut">
-                <span className="admin-shortcut-icon">📋</span>
+                <span className="admin-shortcut-icon"><Icon name="clipboard" size={20} /></span>
                 <span><b>All decisions</b><small>Browse & override any analysis</small></span>
               </Link>
               <Link to="/admin/policies" className="admin-shortcut">
-                <span className="admin-shortcut-icon">⚙️</span>
+                <span className="admin-shortcut-icon"><Icon name="sliders" size={20} /></span>
                 <span><b>Risk policies</b><small>Tune thresholds & lending rules</small></span>
               </Link>
               <Link to="/admin/model" className="admin-shortcut">
-                <span className="admin-shortcut-icon">🤖</span>
+                <span className="admin-shortcut-icon"><Icon name="cpu" size={20} /></span>
                 <span><b>Model performance</b><small>AUC, drivers & metrics</small></span>
               </Link>
               <Link to="/admin/settings" className="admin-shortcut">
-                <span className="admin-shortcut-icon">🔧</span>
+                <span className="admin-shortcut-icon"><Icon name="tool" size={20} /></span>
                 <span><b>Settings & sessions</b><small>API keys, active logins{data.active_api_keys ? ` (${data.active_api_keys} keys)` : ""}</small></span>
               </Link>
               <Link to="/borrowers" className="admin-shortcut">
-                <span className="admin-shortcut-icon">👥</span>
+                <span className="admin-shortcut-icon"><Icon name="users" size={20} /></span>
                 <span><b>Borrowers</b><small>Search the full portfolio</small></span>
               </Link>
             </div>

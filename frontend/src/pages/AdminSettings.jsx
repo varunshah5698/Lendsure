@@ -137,7 +137,7 @@ export default function AdminSettings() {
               </table>
             </div>
           ) : (
-            <EmptyState title="No keys yet" icon="🔑" description="Create an API key to access LendSure programmatically." />
+            <EmptyState title="No keys yet" icon="lock" description="Create an API key to access LendSure programmatically." />
           )}
         </CardContent>
       </Card>
@@ -175,7 +175,7 @@ export default function AdminSettings() {
               </table>
             </div>
           ) : (
-            <EmptyState title="No sessions" icon="👤" description="No active sign-ins found." />
+            <EmptyState title="No sessions" icon="user" description="No active sign-ins found." />
           )}
         </CardContent>
       </Card>

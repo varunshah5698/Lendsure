@@ -5,6 +5,7 @@ import FloatingCards from "../components/landing/FloatingCards";
 import SafeRiskCore from "../components/landing/SafeRiskCore";
 import SafeApprovalWave from "../components/landing/SafeApprovalWave";
 import Logo from "../components/ui/Logo";
+import Icon from "../components/ui/Icon";
 import "./Landing.css";
 
 const fadeUp = { initial: { opacity: 0, y: 30 }, whileInView: { opacity: 1, y: 0 }, viewport: { once: true, margin: "-80px" }, transition: { duration: 0.7, ease: "easeOut" } };
@@ -40,7 +41,7 @@ function Navbar() {
           <Link to="/auth" className="lp-btn-primary">Get Started →</Link>
         </div>
         <button className="lp-nav-mobile" onClick={() => setMobileOpen(!mobileOpen)} aria-label="Menu">
-          {mobileOpen ? "✕" : "☰"}
+          <Icon name={mobileOpen ? "x" : "menu"} size={18} />
         </button>
       </div>
     </nav>
@@ -86,10 +87,10 @@ function Hero() {
 
 function DataToDecision() {
   const stages = [
-    { num: "01", title: "BORROWER", desc: "Income ₹1,20,000 · Debt ₹28,000 · History: Strong", icon: "👤" },
-    { num: "02", title: "LENDSURE ANALYZES", desc: "Income Stability · Repayment History · Debt Burden · Fraud Signals", icon: "🔍" },
-    { num: "03", title: "INTELLIGENCE", desc: "Trust Score 96 · Repayment Risk LOW · Fraud Risk LOW · Confidence 97%", icon: "🧠" },
-    { num: "04", title: "DECISION", desc: "APPROVE — Recommended ₹35,000 at 10% for 3 months", icon: "✅" },
+    { num: "01", title: "BORROWER", desc: "Income ₹1,20,000 · Debt ₹28,000 · History: Strong", icon: "user" },
+    { num: "02", title: "LENDSURE ANALYZES", desc: "Income Stability · Repayment History · Debt Burden · Fraud Signals", icon: "search" },
+    { num: "03", title: "INTELLIGENCE", desc: "Trust Score 96 · Repayment Risk LOW · Fraud Risk LOW · Confidence 97%", icon: "cpu" },
+    { num: "04", title: "DECISION", desc: "APPROVE — Recommended ₹35,000 at 10% for 3 months", icon: "check-circle" },
   ];
   return (
     <section className="lp-section" id="how-it-works">
@@ -101,7 +102,7 @@ function DataToDecision() {
         {stages.map((s, i) => (
           <motion.div key={s.num} className="lp-pipeline-stage" {...stagger} transition={{ delay: i * 0.15, duration: 0.6 }}>
             <div className="lp-pipeline-num">{s.num}</div>
-            <div className="lp-pipeline-icon">{s.icon}</div>
+            <div className="lp-pipeline-icon"><Icon name={s.icon} size={30} /></div>
             <h3 className="lp-pipeline-title">{s.title}</h3>
             <p className="lp-pipeline-desc">{s.desc}</p>
             {i < stages.length - 1 && <div className="lp-pipeline-arrow">→</div>}

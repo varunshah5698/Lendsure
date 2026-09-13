@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import Icon from "../ui/Icon";
 import "./MetricCard.css";
 
 export default function MetricCard({ label, value, sub, trend, variant = "default", icon }) {
@@ -27,7 +28,7 @@ export default function MetricCard({ label, value, sub, trend, variant = "defaul
           <div className="metric-value">{value ?? "—"}</div>
           <div className="metric-label">{label}</div>
         </div>
-        {icon && <span className="metric-chip" aria-hidden="true">{icon}</span>}
+        {icon && <span className="metric-chip" aria-hidden="true"><Icon name={icon} size={18} /></span>}
       </div>
       <div className="metric-foot">
         {sub && <div className="metric-sub">{sub}</div>}

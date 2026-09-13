@@ -18,6 +18,7 @@ import DecisionBadge from "../components/risk/DecisionBadge";
 import NetworkTab from "../components/graph/NetworkTab";
 import AuditTimeline from "../components/audit/AuditTimeline";
 import EmptyState from "../components/ui/EmptyState";
+import Icon from "../components/ui/Icon";
 import ErrorState from "../components/ui/ErrorState";
 import { SkeletonCard } from "../components/ui/Skeleton";
 import "./BorrowerDetails.css";
@@ -121,19 +122,19 @@ export default function BorrowerDetails() {
         <div className="bd-info">
           <h1 className="bd-name">{borrower.name} <span className="bd-id">{borrower.borrower_id}</span> <CopyButton text={borrower.borrower_id} label="ID" /></h1>
           <div className="bd-meta">
-            <span>📍 {borrower.city}</span>
-            <span>💼 <b>{borrower.employment_type}</b> · {borrower.employment_years}y</span>
-            <span>🕐 Account {borrower.account_age_months} mo</span>
+            <span className="bd-meta-item"><Icon name="pin" size={13} /> {borrower.city}</span>
+            <span className="bd-meta-item"><Icon name="briefcase" size={13} /> <b>{borrower.employment_type}</b> · {borrower.employment_years}y</span>
+            <span className="bd-meta-item"><Icon name="clock" size={13} /> Account {borrower.account_age_months} mo</span>
             <Badge variant={borrower.verification_bucket}>{(borrower.verification_bucket || "").replace(/_/g, " ")}</Badge>
           </div>
         </div>
         <div className="bd-actions">
-          <Button variant="secondary" size="sm" onClick={toggleEvidence}>⧉ Evidence</Button>
+          <Button variant="secondary" size="sm" onClick={toggleEvidence}><Icon name="file-text" size={14} /> Evidence</Button>
           <Button variant="secondary" size="sm" onClick={() => {
             downloadJSON(`${id}-analysis.json`, { borrower, analysis, financials });
             toast.success("Analysis exported");
-          }}>⤓ Export</Button>
-          <Button variant="secondary" size="sm" onClick={() => window.print()}>🖨 Print</Button>
+          }}><Icon name="download" size={14} /> Export</Button>
+          <Button variant="secondary" size="sm" onClick={() => window.print()}><Icon name="printer" size={14} /> Print</Button>
           <Button variant="secondary" size="sm" onClick={async () => {
             const url = window.location.href;
             try {
@@ -406,7 +407,7 @@ function DocumentsTab({ borrower: b, bid, token, toast, guest }) {
     setViewing(null);
   };
 
-  const ico = { identity: "🪪", bank_statement: "🏦", income_document: "🧾", salary_slip: "💼", business_document: "🏪" };
+  const ico = { identity: "idcard", bank_statement: "briefcase", income_document: "file-text", salary_slip: "clipboard", business_document: "home" };
 
   return (
     <>
@@ -415,7 +416,7 @@ function DocumentsTab({ borrower: b, bid, token, toast, guest }) {
       <CardContent>
         {docs.length ? docs.map((d) => (
           <div key={d.id} className="doc-row">
-            <span className="doc-icon">{ico[d.doc_type] || "📄"}</span>
+            <span className="doc-icon"><Icon name={ico[d.doc_type] || "file-text"} size={18} /></span>
             <div className="doc-info">
               <b style={{ textTransform: "capitalize" }}>{d.doc_type.replace(/_/g, " ")}</b>
               <small>{d.file_name} · quality {d.quality_score}/100</small>
@@ -423,14 +424,14 @@ function DocumentsTab({ borrower: b, bid, token, toast, guest }) {
             <Badge variant={d.status}>{d.status.replace(/_/g, " ")}</Badge>
             <span title={`Pipeline: ${d.pipeline_status || "PENDING"} · OCR: ${d.ocr_status || "NOT_AVAILABLE"} · Scan: ${d.scan_status || "NOT_AVAILABLE"}`}
               style={{ fontSize: 11, color: "var(--text-muted)" }}>
-              ⚙ {d.pipeline_status || "PENDING"}
+              {d.pipeline_status || "PENDING"}
             </span>
             <select value={d.status} onChange={(e) => updateStatus(d.id, e.target.value)} className="doc-select" disabled={guest}>
               <option>needs_review</option><option>verified</option><option>suspicious</option>
             </select>
             <Button variant="ghost" size="sm" onClick={() => viewDoc(d)}>View</Button>
           </div>
-        )) : <EmptyState title="No documents on file" icon="📄" />}
+        )) : <EmptyState title="No documents on file" icon="file-text" />}
 
         <div style={{ marginTop: 20 }}>
           <h4 style={{ fontSize: 14, marginBottom: 10 }}>Register document</h4>
@@ -447,7 +448,7 @@ function DocumentsTab({ borrower: b, bid, token, toast, guest }) {
           </div>
           <div className="doc-add-row" style={{ marginTop: 10 }}>
             <label className="filter-search-input" style={{ flex: 1, cursor: guest ? "not-allowed" : "pointer", opacity: guest ? 0.5 : 1 }}>
-              {uploading ? "Uploading…" : "📎 Upload file (PDF/PNG/JPG, ≤2MB)…"}
+              {uploading ? "Uploading…" : <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Icon name="paperclip" size={13} /> Upload file (PDF/PNG/JPG, ≤2MB)…</span>}
               <input type="file" accept=".pdf,.png,.jpg,.jpeg" disabled={guest || uploading} style={{ display: "none" }}
                 onChange={async (e) => {
                   const f = e.target.files?.[0];
@@ -522,7 +523,7 @@ function FraudTrustTab({ analysis: a }) {
               <div className="signal-info"><b>{s.title}</b><small>{s.evidence}</small></div>
               <Badge variant={s.severity === "high" ? "HIGH" : s.severity === "medium" ? "MEDIUM" : "LOW"}>{s.severity}</Badge>
             </div>
-          )) : <EmptyState title="No fraud signals detected" icon="✓" description="All verification and behavior checks are clean." />}
+          )) : <EmptyState title="No fraud signals detected" icon="check-circle" description="All verification and behavior checks are clean." />}
         </CardContent>
       </Card>
       <Card>
@@ -558,7 +559,7 @@ function ExplainTab({ analysis: a }) {
             {up.map((f, i) => (
               <li key={i} className="factor-item factor-negative">
                 <b>{f.title}</b>
-                {f.code === "ml_default_model" && <span className="ml-chip">🤖 ML Model</span>}
+                {f.code === "ml_default_model" && <span className="ml-chip"><Icon name="cpu" size={12} style={{ display: "inline", verticalAlign: "-1px" }} /> ML Model</span>}
                 <span> — {f.observed}</span>
               </li>
             ))}

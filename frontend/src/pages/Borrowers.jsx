@@ -10,6 +10,7 @@ import PageHeader from "../components/layout/PageHeader";
 import Card from "../components/ui/Card";
 import Badge from "../components/ui/Badge";
 import Button from "../components/ui/Button";
+import Icon from "../components/ui/Icon";
 import EmptyState from "../components/ui/EmptyState";
 import ErrorState from "../components/ui/ErrorState";
 import { SkeletonTable } from "../components/ui/Skeleton";
@@ -74,7 +75,7 @@ export default function Borrowers({ searchQuery = "" }) {
           <Button variant="secondary" size="sm" onClick={() => {
             downloadCSV("borrowers.csv", data.rows);
             toast.success("Exported current page to CSV");
-          }}>⤓ Export CSV</Button>
+          }}> <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Icon name="download" size={14} /> Export CSV</span></Button>
         ) : null}
       />
 

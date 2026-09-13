@@ -65,14 +65,14 @@ export default function Dashboard() {
       <PageHeader title={greet()} description="Lending Intelligence Overview · live from the database" />
 
       <div className="dashboard-grid">
-        <MetricCard label="Borrowers" value={data.borrowers?.toLocaleString()} sub={`${data.borrowers?.toLocaleString()}-profile portfolio`} icon="👥" />
-        <MetricCard label="Low Risk" value={data.low_risk} variant="success" icon="✓" />
-        <MetricCard label="Medium Risk" value={data.medium_risk} variant="warning" sub="watchlist" icon="⚡" />
-        <MetricCard label="High Risk" value={data.high_risk} variant="danger" sub="needs caution" icon="⚑" />
-        <MetricCard label="Potential Fraud" value={data.fraud_high} variant="danger" sub="high-severity" icon="🛡" />
-        <MetricCard label="Pending Verification" value={data.pending_verification} variant="warning" sub="review queue" icon="📋" />
-        <MetricCard label="Avg Trust Score" value={data.avg_trust ?? "—"} icon="🤝" />
-        <MetricCard label="Avg Confidence" value={data.avg_confidence != null ? `${data.avg_confidence}%` : "—"} icon="🎯" />
+        <MetricCard label="Borrowers" value={data.borrowers?.toLocaleString()} sub={`${data.borrowers?.toLocaleString()}-profile portfolio`} icon="users" />
+        <MetricCard label="Low Risk" value={data.low_risk} variant="success" icon="check" />
+        <MetricCard label="Medium Risk" value={data.medium_risk} variant="warning" sub="watchlist" icon="zap" />
+        <MetricCard label="High Risk" value={data.high_risk} variant="danger" sub="needs caution" icon="flag" />
+        <MetricCard label="Potential Fraud" value={data.fraud_high} variant="danger" sub="high-severity" icon="shield" />
+        <MetricCard label="Pending Verification" value={data.pending_verification} variant="warning" sub="review queue" icon="clipboard" />
+        <MetricCard label="Avg Trust Score" value={data.avg_trust ?? "—"} icon="heart" />
+        <MetricCard label="Avg Confidence" value={data.avg_confidence != null ? `${data.avg_confidence}%` : "—"} icon="target" />
       </div>
 
       <Card>

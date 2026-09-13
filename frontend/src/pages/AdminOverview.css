@@ -37,7 +37,7 @@
   transition: background .15s ease;
 }
 .admin-shortcut:hover { background: var(--bg); }
-.admin-shortcut-icon { font-size: 20px; }
+.admin-shortcut-icon { display: inline-flex; color: var(--primary); flex-shrink: 0; margin-top: 2px; }
 .admin-shortcut b { display: block; font-size: 13.5px; color: var(--text); }
 .admin-shortcut small { display: block; font-size: 12px; color: var(--text-muted); }
 

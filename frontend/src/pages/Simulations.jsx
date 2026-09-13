@@ -9,6 +9,7 @@ import Button from "../components/ui/Button";
 import ErrorState from "../components/ui/ErrorState";
 import EmptyState from "../components/ui/EmptyState";
 import { SkeletonCard } from "../components/ui/Skeleton";
+import Icon from "../components/ui/Icon";
 
 export default function Simulations() {
   const { session } = useAuth();
@@ -56,7 +57,7 @@ export default function Simulations() {
       <PageHeader
         title="Simulation Center"
         description="Scripted scenarios executing real backend services on SIM-flagged records — isolated from production metrics"
-        actions={<Button variant="ghost" size="sm" disabled={guest} onClick={cleanup}>🧹 Cleanup SIM data</Button>}
+        actions={<Button variant="ghost" size="sm" disabled={guest} onClick={cleanup}>Cleanup SIM data</Button>}
       />
       <div className="bd-grid">
         {scenarios.map((s) => (
@@ -66,13 +67,13 @@ export default function Simulations() {
               <Button variant="primary" size="sm" disabled={running === s.id || guest}
                 title={guest ? "Sign in with Phone OTP" : "Run scenario"}
                 onClick={() => run(s.id)}>
-                {running === s.id ? "Running…" : "▶ Run scenario"}
+                {running === s.id ? "Running…" : "Run scenario"}
               </Button>
               {results[s.id] && (
                 <div style={{ marginTop: 12 }}>
                   {results[s.id].steps.map((st, i) => (
                     <div key={i} className="audit-row">
-                      <div>{st.ok ? "✓" : "✗"} <b>{st.step}</b><br />
+                      <div>{st.ok ? "✓" : <Icon name="x" size={12} style={{ display: "inline", verticalAlign: "-1px" }} />} <b>{st.step}</b><br />
                         <small style={{ color: "var(--text-muted)" }}>{st.detail}</small></div>
                       {st.link && <Link to={st.link} className="link-btn" style={{ fontSize: 12 }}>open →</Link>}
                     </div>

@@ -1,3 +1,4 @@
+import Icon from "../ui/Icon";
 import "./AuditTimeline.css";
 
 const ACTION_LABELS = {
@@ -11,13 +12,13 @@ const ACTION_LABELS = {
 };
 
 const ACTION_ICONS = {
-  analysis_completed: "📊",
-  simulation: "🧪",
-  document_uploaded: "📄",
-  document_reviewed: "👁",
-  config_changed: "⚙",
-  review_decision: "✅",
-  session_revoked: "🔒",
+  analysis_completed: "chart",
+  simulation: "flask",
+  document_uploaded: "file-text",
+  document_reviewed: "eye",
+  config_changed: "sliders",
+  review_decision: "check-circle",
+  session_revoked: "lock",
 };
 
 export default function AuditTimeline({ events = [] }) {
@@ -32,7 +33,7 @@ export default function AuditTimeline({ events = [] }) {
           <div className="audit-dot" />
           <div className="audit-content">
             <div className="audit-header">
-              <span className="audit-action-icon">{ACTION_ICONS[e.action] || "●"}</span>
+              <span className="audit-action-icon"><Icon name={ACTION_ICONS[e.action] || "chart"} size={13} /></span>
               <span className="audit-action">{ACTION_LABELS[e.action] || e.action.replace(/_/g, " ")}</span>
             </div>
             <div className="audit-meta">

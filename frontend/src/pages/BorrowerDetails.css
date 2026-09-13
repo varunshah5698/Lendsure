@@ -93,7 +93,8 @@
 /* Documents */
 .doc-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border-light); }
 .doc-row:first-child { border-top: none; }
-.doc-icon { width: 36px; height: 36px; border-radius: var(--radius); background: var(--bg-alt); display: grid; place-items: center; font-size: 16px; flex-shrink: 0; }
+.doc-icon { width: 36px; height: 36px; border-radius: var(--radius); background: var(--bg-alt); color: var(--text-secondary); display: grid; place-items: center; flex-shrink: 0; }
+.bd-meta-item { display: inline-flex; align-items: center; gap: 5px; color: var(--text-secondary); }
 .doc-info { flex: 1; }
 .doc-info b { display: block; }
 .doc-info small { color: var(--text-muted); }
