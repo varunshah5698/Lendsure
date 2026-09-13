@@ -11,10 +11,7 @@ const ROUTES = [
   { label: "Cases", path: "/cases", hint: "", lender: true },
   { label: "Copilot", path: "/copilot", hint: "", lender: true },
   { label: "Simulations", path: "/simulations", hint: "", lender: true },
-  { label: "Risk Intelligence", path: "/financial-intelligence", hint: "G R" },
   { label: "Fraud Intelligence", path: "/borrowers", hint: "G F" },
-  { label: "Graph Intelligence", path: "/financial-intelligence", hint: "G G" },
-  { label: "Financial Intelligence", path: "/financial-intelligence", hint: "" },
   { label: "Approvals", path: "/admin/approvals", hint: "", lender: true },
   { label: "Background Jobs", path: "/admin/jobs", hint: "", lender: true },
   { label: "Model Performance", path: "/admin/model", hint: "", lender: true },
@@ -58,7 +55,7 @@ export default function CommandPalette() {
       const k = e.key.toLowerCase();
       if (gRef.current) {
         gRef.current = false;
-        const map = { b: "/borrowers", l: "/loan-requests", r: "/financial-intelligence", g: "/financial-intelligence", f: "/borrowers" };
+        const map = { b: "/borrowers", l: "/loan-requests", f: "/borrowers" };
         if (map[k]) navigate(map[k]);
         return;
       }
@@ -116,7 +113,7 @@ export default function CommandPalette() {
           ))}
           {!items.length && !bidMatch && <div className="cmd-empty">No matches</div>}
         </div>
-        <div className="cmd-foot">⌘K toggle · ↑↓ navigate · Enter open · Esc close · G then B/L/R/G/F jump</div>
+        <div className="cmd-foot">⌘K toggle · ↑↓ navigate · Enter open · Esc close · G then B/L/F jump</div>
       </div>
     </div>
   );

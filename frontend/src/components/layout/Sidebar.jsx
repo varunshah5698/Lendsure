@@ -16,15 +16,6 @@ const NAV = [
     { label: "Cases", path: "/cases", icon: "📁", lender: true },
     { label: "Simulations", path: "/simulations", icon: "🧪", lender: true },
   ]},
-  { section: "Financial Intelligence", items: [
-    { label: "Overview", path: "/financial-intelligence", icon: "🌐" },
-    { label: "Live News", path: "/financial-intelligence/news", icon: "📰" },
-    { label: "Markets", path: "/financial-intelligence/markets", icon: "📈" },
-    { label: "Economy", path: "/financial-intelligence/economy", icon: "🏛" },
-    { label: "Credit Environment", path: "/financial-intelligence/credit", icon: "💳" },
-    { label: "Watchlist", path: "/financial-intelligence/watchlist", icon: "⭐" },
-    { label: "Alerts", path: "/financial-intelligence/alerts", icon: "🔔" },
-  ]},
   { section: "Governance", lender: true, items: [
     { label: "Admin Overview", path: "/admin/overview", icon: "🛡", lender: true },
     { label: "Approvals", path: "/admin/approvals", icon: "✅", lender: true },

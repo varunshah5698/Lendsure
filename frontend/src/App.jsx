@@ -19,16 +19,6 @@ import LoanDetail from "./pages/LoanDetail";
 import Cases from "./pages/Cases";
 import Copilot from "./pages/Copilot";
 import Simulations from "./pages/Simulations";
-import FinancialOverview from "./pages/FinancialOverview";
-import FinancialNews from "./pages/FinancialNews";
-import FinancialNewsArticle from "./pages/FinancialNewsArticle";
-import FinancialMarkets from "./pages/FinancialMarkets";
-import FinancialMarketDetail from "./pages/FinancialMarketDetail";
-import FinancialEconomy from "./pages/FinancialEconomy";
-import FinancialCredit from "./pages/FinancialCredit";
-import FinancialWatchlist from "./pages/FinancialWatchlist";
-import FinancialAlerts from "./pages/FinancialAlerts";
-import FinancialSources from "./pages/FinancialSources";
 import Security from "./pages/Security";
 import AdminModel from "./pages/AdminModel";
 import AdminOverview from "./pages/AdminOverview";
@@ -87,16 +77,6 @@ function AppLayout() {
             <Route path="/cases" element={<RequireLender><Cases /></RequireLender>} />
             <Route path="/copilot" element={<RequireLender><Copilot /></RequireLender>} />
             <Route path="/simulations" element={<RequireLender><Simulations /></RequireLender>} />
-            <Route path="/financial-intelligence" element={<FinancialOverview />} />
-            <Route path="/financial-intelligence/news" element={<FinancialNews />} />
-            <Route path="/financial-intelligence/news/:id" element={<FinancialNewsArticle />} />
-            <Route path="/financial-intelligence/markets" element={<FinancialMarkets />} />
-            <Route path="/financial-intelligence/markets/:symbol" element={<FinancialMarketDetail />} />
-            <Route path="/financial-intelligence/economy" element={<FinancialEconomy />} />
-            <Route path="/financial-intelligence/credit" element={<FinancialCredit />} />
-            <Route path="/financial-intelligence/watchlist" element={<FinancialWatchlist />} />
-            <Route path="/financial-intelligence/alerts" element={<FinancialAlerts />} />
-            <Route path="/financial-intelligence/sources" element={<FinancialSources />} />
             <Route path="/security" element={<RequireLender><Security /></RequireLender>} />
             <Route path="/admin/overview" element={<RequireLender><AdminOverview /></RequireLender>} />
             <Route path="/admin/approvals" element={<RequireLender><AdminApprovals /></RequireLender>} />
