@@ -35,8 +35,8 @@ function WaveBars() {
           <mesh ref={(el) => (refs.current[b.key] = el)}>
             <boxGeometry args={[0.16, 1, 0.16]} />
             <meshStandardMaterial
-              color="#818cf8"
-              emissive="#6366f1"
+              color="#191a23"
+              emissive="#191a23"
               emissiveIntensity={0.7}
               transparent
               opacity={0.85}
@@ -76,8 +76,8 @@ function RippleDot({ onPositions }) {
     <mesh ref={ref}>
       <sphereGeometry args={[0.14, 20, 20]} />
       <meshStandardMaterial
-        color="#22d3ee"
-        emissive="#22d3ee"
+        color="#191a23"
+        emissive="#191a23"
         emissiveIntensity={1.4}
       />
     </mesh>
@@ -104,8 +104,8 @@ function WavePlane() {
   return (
     <mesh geometry={geo} rotation={[-Math.PI / 2, Math.PI / 2, 0]} position={[0, -0.3, -0.6]}>
       <meshStandardMaterial
-        color="#4f46e5"
-        emissive="#4f46e5"
+        color="#191a23"
+        emissive="#191a23"
         emissiveIntensity={0.35}
         transparent
         opacity={0.28}
@@ -146,7 +146,7 @@ function Sparks() {
       <bufferGeometry>
         <bufferAttribute attach="attributes-position" count={count} array={data.positions} itemSize={3} />
       </bufferGeometry>
-      <pointsMaterial size={0.03} color="#22d3ee" transparent opacity={0.5} sizeAttenuation />
+      <pointsMaterial size={0.03} color="#191a23" transparent opacity={0.5} sizeAttenuation />
     </points>
   );
 }

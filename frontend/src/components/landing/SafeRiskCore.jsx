@@ -59,13 +59,13 @@ export default function SafeRiskCore({ className }) {
         el = document.createElement("span");
         el.textContent = label;
         el.style.position = "absolute";
-        el.style.color = "#e0e7ff";
+        el.style.color = "#191a23";
         el.style.fontSize = "11px";
-        el.style.fontWeight = "600";
+        el.style.fontWeight = "700";
         el.style.letterSpacing = "0.06em";
         el.style.whiteSpace = "nowrap";
         el.style.pointerEvents = "none";
-        el.style.textShadow = "0 0 10px rgba(99,102,241,.8), 0 0 20px rgba(99,102,241,.4)";
+        el.style.textShadow = "0 0 8px rgba(255,255,255,.95), 0 1px 3px rgba(25,26,35,.3)";
         el.style.fontFamily = "'Inter', sans-serif";
         if (!overlay.__els) overlay.__els = {};
         overlay.__els[label] = el;

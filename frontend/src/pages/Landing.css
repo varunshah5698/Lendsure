@@ -95,7 +95,7 @@
 .lp-hero-3d { flex: 1; position: relative; min-height: 560px; display: flex; flex-direction: column; z-index: 1; }
 .lp-hero-scene-wrap {
   flex: 1; min-height: 0; position: relative;
-  background: var(--pv-ink); border: 1px solid var(--pv-ink);
+  background: var(--pv-smoke); border: 1px solid var(--pv-ink);
   border-radius: 45px; box-shadow: var(--pv-shadow); overflow: hidden;
 }
 .lp-hero-scene { position: absolute; inset: 0; }
@@ -112,7 +112,7 @@
 }
 .lp-fallback-ring {
   position: absolute; border-radius: 50%;
-  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  border: 1.5px solid var(--pv-ink);
 }
 .lp-fallback-ring--1 { width: 160px; height: 160px; animation: fallbackSpin 12s linear infinite; }
 .lp-fallback-ring--2 { width: 240px; height: 240px; animation: fallbackSpin 18s linear infinite reverse; }

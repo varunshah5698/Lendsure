@@ -70,9 +70,9 @@ export default function SafeApprovalWave({ className }) {
           height: 10,
           pointerEvents: "none",
           borderRadius: "50%",
-          background: "#22d3ee",
+          background: "#191a23",
           opacity: 0.9,
-          boxShadow: "0 0 14px rgba(34,211,238,.9), 0 0 40px rgba(34,211,238,.4)",
+          boxShadow: "0 0 14px rgba(25,26,35,.5)",
         }}
       />
     </div>
