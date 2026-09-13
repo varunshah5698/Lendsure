@@ -19,8 +19,8 @@
 /* Variants */
 .btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); }
 .btn-primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
-.btn-secondary { background: var(--surface); color: var(--text-primary); border-color: var(--border); }
-.btn-secondary:hover { background: var(--surface-hover); border-color: #cbd5e1; }
+.btn-secondary { background: var(--surface); color: var(--text-primary); border-color: var(--pv-ink, #191a23); }
+.btn-secondary:hover { background: var(--surface-hover); box-shadow: 3px 3px 0 #191a23; }
 .btn-danger { background: var(--danger); color: #fff; border-color: var(--danger); }
 .btn-danger:hover { background: #dc2626; border-color: #dc2626; }
 .btn-ghost { background: transparent; color: var(--text-secondary); border-color: transparent; }

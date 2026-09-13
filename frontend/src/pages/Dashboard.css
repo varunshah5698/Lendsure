@@ -50,7 +50,7 @@
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--primary), #06b6d4);
+  background: var(--pv-ink, #191a23);
   color: #fff;
   display: grid;
   place-items: center;

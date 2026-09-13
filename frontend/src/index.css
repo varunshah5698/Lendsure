@@ -8,9 +8,12 @@
   --text-primary: #0f172a;
   --text-secondary: #475569;
   --text-muted: #94a3b8;
-  --primary: #10b981;
-  --primary-hover: #059669;
-  --primary-light: #ecfdf5;
+  --primary: #191a23;
+  --primary-hover: #2b2c36;
+  --primary-light: #eefbda;
+  --pv-ink: #191a23;
+  --pv-lime: #b9ff66;
+  --pv-hard: 4px 4px 0 #191a23;
   --success: #10b981;
   --success-light: #ecfdf5;
   --warning: #f59e0b;
