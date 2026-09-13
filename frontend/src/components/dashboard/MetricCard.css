@@ -1,30 +1,69 @@
+/* Minimal dashboard metric card — number-first, tinted icon chip, quiet borders. */
 .metric-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 18px 20px;
+  border-radius: 14px;
+  padding: 16px 18px;
   position: relative;
-  overflow: hidden;
+  box-shadow: var(--shadow-xs);
+  transition: box-shadow .15s ease, transform .15s ease;
 }
-.metric-card::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
+.metric-card:hover {
+  box-shadow: var(--shadow-sm);
 }
-.metric-default::before { background: var(--primary); }
-.metric-success::before { background: var(--success); }
-.metric-warning::before { background: var(--warning); }
-.metric-danger::before { background: var(--danger); }
-
-.metric-top { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.metric-icon { font-size: 14px; }
-.metric-label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
-.metric-value { font-size: 26px; font-weight: 800; letter-spacing: -.02em; line-height: 1.1; }
-.metric-sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
-.metric-trend { font-size: 12px; font-weight: 600; margin-top: 4px; }
-.trend-up { color: var(--success); }
-.trend-down { color: var(--danger); }
+.metric-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.metric-text { min-width: 0; }
+.metric-value {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.metric-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  margin-top: 5px;
+}
+.metric-chip {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+  background: var(--bg-alt);
+  color: var(--text-secondary);
+}
+.metric-success .metric-chip { background: var(--success-light); color: var(--success); }
+.metric-warning .metric-chip { background: var(--warning-light); color: #b45309; }
+.metric-danger .metric-chip { background: var(--danger-light); color: var(--danger); }
+.metric-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+}
+.metric-sub { font-size: 12px; color: var(--text-muted); }
+.metric-trend {
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: var(--bg-alt);
+  white-space: nowrap;
+}
+.trend-up { color: var(--success); background: var(--success-light); }
+.trend-down { color: var(--danger); background: var(--danger-light); }

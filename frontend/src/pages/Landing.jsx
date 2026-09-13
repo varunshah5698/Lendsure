@@ -122,8 +122,8 @@ function TrustScoreSection() {
         <motion.div className="lp-trust-score-card" {...fadeUp}>
           <div className="lp-trust-ring">
             <svg viewBox="0 0 120 120" className="lp-trust-svg">
-              <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(99,102,241,0.15)" strokeWidth="6" />
-              <circle cx="60" cy="60" r="52" fill="none" stroke="#6366f1" strokeWidth="6"
+              <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(25,26,35,0.15)" strokeWidth="6" />
+              <circle cx="60" cy="60" r="52" fill="none" stroke="#191a23" strokeWidth="6"
                 strokeDasharray={`${0.96 * 327} 327`} strokeLinecap="round"
                 transform="rotate(-90 60 60)" />
             </svg>

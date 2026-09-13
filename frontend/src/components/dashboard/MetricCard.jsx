@@ -22,15 +22,19 @@ export default function MetricCard({ label, value, sub, trend, variant = "defaul
 
   return (
     <div className={`metric-card metric-${variant}`} ref={ref}>
-      <div className="metric-top">
-        {icon && <span className="metric-icon">{icon}</span>}
-        <span className="metric-label">{label}</span>
+      <div className="metric-row">
+        <div className="metric-text">
+          <div className="metric-value">{value ?? "—"}</div>
+          <div className="metric-label">{label}</div>
+        </div>
+        {icon && <span className="metric-chip" aria-hidden="true">{icon}</span>}
       </div>
-      <div className="metric-value">{value ?? "—"}</div>
-      {sub && <div className="metric-sub">{sub}</div>}
-      {trend && <div className={`metric-trend ${trend > 0 ? "trend-up" : "trend-down"}`}>
-        {trend > 0 ? "↑" : "↓"} {Math.abs(trend)}%
-      </div>}
+      <div className="metric-foot">
+        {sub && <div className="metric-sub">{sub}</div>}
+        {trend && <div className={`metric-trend ${trend > 0 ? "trend-up" : "trend-down"}`}>
+          {trend > 0 ? "↑" : "↓"} {Math.abs(trend)}%
+        </div>}
+      </div>
     </div>
   );
 }
