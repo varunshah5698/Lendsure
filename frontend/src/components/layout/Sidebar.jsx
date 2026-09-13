@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, Link } from "react-router-dom";
 import { useAuth, isGuest } from "../../context/AuthContext";
 import Logo from "../ui/Logo";
 import Icon from "../ui/Icon";
@@ -40,10 +40,10 @@ export default function Sidebar({ collapsed, onToggle }) {
   return (
     <aside className={`sidebar ${collapsed ? "sidebar-collapsed" : ""}`}>
       <div className="sidebar-header">
-        <div className="sidebar-logo">
+        <Link to="/" className="sidebar-logo" title="Back to home page">
           <Logo size={32} />
           {!collapsed && <span className="sidebar-brand">LendSure</span>}
-        </div>
+        </Link>
         <button className="sidebar-toggle" onClick={onToggle} aria-label="Toggle sidebar">
           {collapsed ? "→" : "←"}
         </button>
