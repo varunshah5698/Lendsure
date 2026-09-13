@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
+import { api } from "../lib/api";
 import FloatingCards from "../components/landing/FloatingCards";
 import SafeRiskCore from "../components/landing/SafeRiskCore";
 import SafeApprovalWave from "../components/landing/SafeApprovalWave";
@@ -342,6 +343,23 @@ function AuditTrail() {
 function DashboardPreview() {
   const { session } = useAuth();
   const app = session ? "/dashboard" : "/auth";
+  const [metrics, setMetrics] = useState(null);
+  useEffect(() => {
+    let live = true;
+    Promise.all([
+      api("/ls/dashboard/metrics").catch(() => null),
+      api("/ls/ml/credit/public").catch(() => null),
+    ]).then(([d, m]) => {
+      if (!live || !d || !m) return;
+      setMetrics([
+        `${d.borrowers.toLocaleString()} Borrowers`,
+        `${d.avg_trust} Avg Trust`,
+        `ROC-AUC ${m.roc_auc.toFixed(2)}`,
+        `${m.n_features} Live Features`,
+      ]);
+    });
+    return () => { live = false; };
+  }, []);
   return (
     <section className="lp-section lp-section-dark">
       <motion.div {...fadeUp}>
@@ -357,7 +375,7 @@ function DashboardPreview() {
         </div>
         <div className="lp-dashboard-placeholder">
           <div className="lp-dash-metrics">
-            {["1,500 Borrowers", "89% Accuracy", "96 Avg Trust", "AUC 0.93"].map((m) => (
+            {(metrics || ["Live Borrowers", "Live Trust Scores", "Live ROC-AUC", "Live Features"]).map((m) => (
               <div key={m} className="lp-dash-metric">{m}</div>
             ))}
           </div>

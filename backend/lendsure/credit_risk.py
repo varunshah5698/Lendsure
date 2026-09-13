@@ -119,3 +119,22 @@ def model_info(authorization: str | None = Header(default=None),
         "calibration": m["calibration"],
         "feature_notes": m["feature_notes"],
     }
+
+
+@router.get("/ml/credit/public")
+def model_public():
+    """Public model facts for the landing page — aggregate metrics only,
+    no borrower data. Same numbers as /model, no login needed."""
+    serve = _engine()
+    m = serve.metadata()
+    tm = m["test_real_metrics"]
+    train_rows = m["data_source"]["real_rows"] + m["data_source"]["synthetic_rows"]
+    return {
+        "model_id": m["model_id"],
+        "n_features": len(m.get("feature_notes", {})) or 16,
+        "train_rows": train_rows,
+        "test_rows": tm["n"],
+        "roc_auc": round(tm["roc_auc"], 2),
+        "pr_auc": round(tm["pr_auc"], 2),
+        "trained_at": m["trained_at"][:10],
+    }

@@ -171,7 +171,8 @@
   "city_risk": "Absent from UCI (NaN) | app target-encoded city default prior fitted on TRAIN ONLY. City effect comes from the synthetic prior; reported as weak by design.",
   "prev_defaults": "UCI #(PAY_*>=3) | app defaults field.",
   "dti": "UCI BILL_AMT6/max(LIMIT_BAL,1) | app avg_debt_6m/max(avg_income_6m,1), clipped 0..5.",
-  "ontime_rate": "UCI #(PAY_*<0)/6 | app ontime_streak_months/max(ontime+late+1,1) blended with salary_credits_6m/6."
+  "ontime_rate": "UCI #(PAY_*<0)/6 | app ontime_streak_months/max(ontime+late+1,1) blended with salary_credits_6m/6.",
+  "age": "UCI AGE | app age. Direct match, no proxy."
  },
  "versions": {
   "sklearn": "1.7.2",

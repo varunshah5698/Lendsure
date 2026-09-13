@@ -35,6 +35,7 @@ FEATURES = [
 FEATURE_NOTES = {
     "credit_capacity": "UCI LIMIT_BAL (credit limit, income-correlated) | app avg_income_6m. Different units; pipeline z-scores both.",
     "loan_amount": "UCI LIMIT_BAL as exposure proxy | app requested_amount.",
+    "age": "UCI AGE | app age. Direct match, no proxy.",
     "dpd_max": "UCI max(PAY_*) | app round(max_days_past_due/30), floor 0.",
     "dpd_mean": "UCI mean(PAY_*) | app avg_delay_days/30 (may be negative).",
     "late_count": "UCI #(PAY_*>0) | app late_payments clipped to 0..6.",
