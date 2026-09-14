@@ -124,7 +124,7 @@ def _chat_complete(messages: list, tools: list) -> dict:
         "model": cfg["model"],
         "messages": messages,
         "temperature": 0.2,
-        "max_tokens": 1024,
+        "max_tokens": 640,
     }
     if tools:
         body["tools"] = tools
@@ -533,7 +533,7 @@ def run_chat(message: str, history: list, session: Optional[dict], role: str) ->
                     result = {"error": "tool failed"}
                 used.append(tname)
                 messages.append({"role": "tool", "tool_call_id": call.get("id", ""),
-                                 "content": json.dumps(result, default=str)[:6000]})
+                                 "content": json.dumps(result, default=str)[:3000]})
         return {"reply": ("I gathered data from: " + ", ".join(dict.fromkeys(used)) +
                           " — but ran out of steps before finishing. Please ask a narrower question."),
                 "tools_used": used}
