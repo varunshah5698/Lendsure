@@ -478,6 +478,10 @@ class GuestIn(BaseModel):
 
 # Phone OTP delivery. In production, Twilio Verify generates and validates the
 # code server-side. Demo mode is opt-in and must never be enabled in production.
+# NOTE (operator): the local otps row enforces OTP_TTL_MIN, so keep the Twilio
+# Verify Service "time to live" at or above OTP_TTL_MIN, or users will see
+# local expiry for still-valid Twilio codes. Numbers are India (+91) only —
+# the 10-digit validation upstream guarantees that shape.
 DEMO_OTP = os.environ.get("LENDSURE_DEMO_OTP", "0") == "1"
 OTP_TTL_MIN = max(1, int(os.environ.get("LENDSURE_OTP_TTL_MIN", "5")))
 TWILIO_OTP_MARKER = "__twilio_verify__"
