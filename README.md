@@ -26,8 +26,10 @@ ML probability, factor breakdown, evidence and audit trail. Retrain anytime with
 - Per-lender keys: create/rotate in **Admin → API keys**, send as `X-API-Key`
   header. Every key action is stamped in the audit log; keys are stored hashed.
   Example: `curl -H "X-API-Key: ls_..." http://127.0.0.1:8000/api/ls/dashboard/metrics`
-- `LENDSURE_DEMO_OTP=0` disables demo-mode OTP echo (wire a real SMS gateway),
-  `LENDSURE_OTP_TTL_MIN` sets OTP lifetime. Sessions: 7-day lenders, 24-h guests.
+- `LENDSURE_DEMO_OTP=0` disables demo-mode OTP echo (required in production).
+  Set `LENDSURE_SMS_PROVIDER=twilio`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`,
+  and `TWILIO_VERIFY_SERVICE_SID` in the server environment to send real SMS OTPs.
+  `LENDSURE_OTP_TTL_MIN` sets the local challenge lifetime. Sessions: 7-day lenders, 24-h guests.
 
 ## How it maps to the PS
 1. **Intelligent Verification & Trust Profiling** — ID/phone/address checks + 0-100 trust score across 5 dimensions (Identity 25, Financial 25, History 20, Network 15, Behavioural 15).
@@ -40,8 +42,10 @@ ML probability, factor breakdown, evidence and audit trail. Retrain anytime with
 - `POST /api/loans/evaluate` — one-call borrower + docs + vouches + loan → trust/risk/terms/explanation (persisted, lender identity stamped in audit log)
 - `GET /api/loans`, `GET /api/loans/{id}`, `GET /api/dashboard/stats`, `GET /api/borrowers/search?q=`
 
-## Sign-in (demo OTP mode)
-Open the app → enter any 10-digit mobile → the 6-digit OTP appears on screen (and in the server log) — no SMS provider needed. Or **Continue as Guest** for instant access. Sessions persist via token in `localStorage` (7 days lender, 24 h guest). Set `DEMO_OTP = False` in `backend/app.py` when wiring a real SMS gateway.
+## Sign-in and phone OTP
+In production, phone sign-in sends a 6-digit SMS through Twilio Verify. Twilio generates and validates the code; LendSure only tracks the challenge expiry and failed-attempt count, and never returns the code to the browser.
+
+For local-only development, set `LENDSURE_DEMO_OTP=1` and leave the Twilio variables unset. The API then includes a demo code in its response. Never enable demo mode in a deployed environment.
 
 ## Try fraud detection
 In the dashboard check “Salary slip (suspect)” or reuse phone `9876543210` / request >10x income → see high-severity flags, score penalty, conditional/decline flip with reasons.
