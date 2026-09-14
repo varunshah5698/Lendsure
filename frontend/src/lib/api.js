@@ -76,6 +76,11 @@ export async function api(path, opts = {}, token = null) {
     if (r.status >= 500) {
       // Never show stack traces / SQL / paths to users — log for devs only.
       try { console.error(`[api] ${r.status} ${path}:`, msg); } catch {}
+      // 502/503/504 almost always means a sleeping/free-tier backend or a
+      // brief deploy restart — say that instead of a dead-end error.
+      if (r.status === 502 || r.status === 503 || r.status === 504) {
+        throw new Error("Server is waking up or restarting. Wait 30 seconds and try again.");
+      }
       throw new Error("Something went wrong. Please try again.");
     }
     throw new Error(msg);
