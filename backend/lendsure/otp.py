@@ -68,8 +68,14 @@ def _table(kind: str) -> tuple[str, str]:
 
 
 def issue(conn, kind: str, identity: str, purpose: str = "",
-          ttl_min: int = 5, max_attempts: int = MAX_ATTEMPTS) -> str:
-    """Create + store a code. Raises 429 on hourly cap or cooldown."""
+          ttl_min: int = 5, max_attempts: int = MAX_ATTEMPTS,
+          code_override: str | None = None) -> str:
+    """Create + store a code. Raises 429 on hourly cap or cooldown.
+
+    code_override stores a caller-chosen value instead of a fresh random
+    code (used for provider-managed flows like Twilio Verify, where the
+    real code lives with the provider and the local row is just a marker).
+    Caps and cooldowns still apply — the override changes nothing else."""
     table, idcol = _table(kind)
     cur = conn.cursor()
     where = f"{idcol}=?"
@@ -88,7 +94,7 @@ def issue(conn, kind: str, identity: str, purpose: str = "",
     if latest and latest["created_at"] > (
             datetime.utcnow() - timedelta(seconds=COOLDOWN_SEC)).isoformat():
         raise HTTPException(429, TEXT[kind]["cooldown"])
-    code = new_code()
+    code = code_override if code_override is not None else new_code()
     now = datetime.utcnow()
     if kind == "phone":
         cur.execute(

@@ -486,6 +486,10 @@ DEMO_OTP = os.environ.get("LENDSURE_DEMO_OTP", "0") == "1"
 OTP_TTL_MIN = max(1, int(os.environ.get("LENDSURE_OTP_TTL_MIN", "5")))
 TWILIO_OTP_MARKER = "__twilio_verify__"
 
+def _otp_len() -> int:
+    from lendsure.otp import code_length
+    return code_length()
+
 def _twilio_configured() -> bool:
     return (
         os.environ.get("LENDSURE_SMS_PROVIDER", "twilio").strip().lower() == "twilio"
@@ -743,28 +747,13 @@ def request_otp(payload: OtpRequestIn):
     conn = db()
     otp_id = None
     try:
-        cur = conn.cursor()
-        recent = cur.execute(
-            "SELECT COUNT(*) c FROM otps WHERE phone=? AND created_at > datetime('now','-1 hour')",
-            (phone,),
-        ).fetchone()["c"]
-        if recent >= 5:
-            raise HTTPException(429, "Too many OTP requests. Try again in an hour.")
-        last = cur.execute(
-            "SELECT created_at FROM otps WHERE phone=? ORDER BY id DESC LIMIT 1", (phone,)
-        ).fetchone()
-        if last and last["created_at"] > (_now() - timedelta(seconds=60)).isoformat():
-            raise HTTPException(429, "A code was just sent — wait a minute before requesting another.")
-        code = TWILIO_OTP_MARKER if live_sms else f"{secrets.randbelow(900000) + 100000:06d}"
-        now = _now()
-        cur.execute(
-            "DELETE FROM otps WHERE phone=?", (phone,)
-        )
-        cur.execute(
-            "INSERT INTO otps (phone, code, attempts, created_at, expires_at) VALUES (?,?,?,?,?)",
-            (phone, code, 0, now.isoformat(), (now + timedelta(minutes=OTP_TTL_MIN)).isoformat()),
-        )
-        otp_id = cur.lastrowid
+        from lendsure.otp import issue as _otp_issue
+        # One path for caps/cooldown/storage; Twilio mode stores a marker
+        # because the real code lives with the provider, not with us.
+        code = _otp_issue(conn, "phone", phone, ttl_min=OTP_TTL_MIN,
+                          code_override=TWILIO_OTP_MARKER if live_sms else None)
+        otp_id = conn.execute("SELECT id FROM otps WHERE phone=? ORDER BY id DESC LIMIT 1",
+                              (phone,)).fetchone()["id"]
         conn.commit()
     finally:
         conn.close()
@@ -778,13 +767,12 @@ def request_otp(payload: OtpRequestIn):
         raise HTTPException(503, "We could not send the SMS right now. Please try again.")
     if DEMO_OTP and not live_sms and os.environ.get("LENDSURE_LOG_CODES") == "1":
         print(f"[OTP] {phone} -> {code} (valid {OTP_TTL_MIN} min)", flush=True)
-    from lendsure.otp import code_length as _otp_length
     resp: dict[str, Any] = {
         "ok": True,
         "message": f"OTP sent to +91 {phone}",
         "expires_in_sec": OTP_TTL_MIN * 60,
         "retry_after_sec": 60,
-        "otp_len": _otp_length(),
+        "otp_len": _otp_len(),
     }
     if DEMO_OTP and not live_sms:
         resp["demo_otp"] = code
@@ -796,7 +784,8 @@ def request_otp(payload: OtpRequestIn):
 def verify_otp(payload: OtpVerifyIn, request: Request, response: Response):
     phone = payload.phone.strip()
     code = payload.otp.strip()
-    if not re.match(r"^\d{10}$", phone) or not re.match(r"^\d{6}$", code):
+    otp_len = _otp_len()
+    if not re.match(r"^\d{10}$", phone) or len(code) != otp_len or not code.isdigit():
         raise HTTPException(400, "Invalid phone or OTP format")
     conn = db()
     try:
