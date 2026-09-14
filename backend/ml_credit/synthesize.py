@@ -16,6 +16,11 @@ from sklearn.preprocessing import StandardScaler
 
 from .features import FEATURES, CITY_PRIOR
 
+def seg_dims(exclude: set | None = None) -> list:
+    drop = set(exclude or []) | {"tenure_months", "city_risk"}
+    return [f for f in FEATURES if f not in drop]
+
+
 SEG_DIMS = [f for f in FEATURES if f not in ("tenure_months", "city_risk")]
 # Discrete / zero-inflated dims are copied EXACTLY (no jitter) so their
 # marginals stay faithful. Only smooth continuous dims get jitter.
@@ -30,12 +35,13 @@ CITY_W = np.array([0.14, 0.12, 0.10, 0.07, 0.07, 0.05, 0.06, 0.04, 0.04, 0.03,
 CITY_W = CITY_W / CITY_W.sum()
 
 
-def fit_segments(real: pd.DataFrame, k: int = 16, seed: int = 42) -> dict:
-    X = real[SEG_DIMS].to_numpy(dtype=float)
+def fit_segments(real: pd.DataFrame, k: int = 16, seed: int = 42, exclude: set | None = None) -> dict:
+    dims = seg_dims(exclude)
+    X = real[dims].to_numpy(dtype=float)
     scaler = StandardScaler().fit(X)
     km = KMeans(n_clusters=k, n_init=10, random_state=seed).fit(scaler.transform(X))
     labels = km.labels_
-    clips = {f: (float(real[f].quantile(0.01)), float(real[f].quantile(0.99))) for f in SEG_DIMS}
+    clips = {f: (float(real[f].quantile(0.01)), float(real[f].quantile(0.99))) for f in dims}
     stds = {f: float(real[f].std() or 1.0) for f in CONT_DIMS}
     segs = []
     members = {}
@@ -48,8 +54,9 @@ def fit_segments(real: pd.DataFrame, k: int = 16, seed: int = 42) -> dict:
     return {"k": k, "members": members, "segments": segs, "clips": clips, "stds": stds}
 
 
-def fit_teacher(real: pd.DataFrame, seed: int = 42):
-    X = real[SEG_DIMS].to_numpy(dtype=float)
+def fit_teacher(real: pd.DataFrame, seed: int = 42, exclude: set | None = None):
+    dims = seg_dims(exclude)
+    X = real[dims].to_numpy(dtype=float)
     y = real["default"].to_numpy(dtype=int)
     t = HistGradientBoostingClassifier(max_iter=150, learning_rate=0.06,
                                        max_leaf_nodes=31, min_samples_leaf=100,
@@ -58,13 +65,15 @@ def fit_teacher(real: pd.DataFrame, seed: int = 42):
     return t
 
 
-def generate(spec: dict, teacher, real: pd.DataFrame, n: int, seed: int = 7) -> pd.DataFrame:
+def generate(spec: dict, teacher, real: pd.DataFrame, n: int, seed: int = 7, exclude: set | None = None) -> pd.DataFrame:
+    dims = seg_dims(exclude)
+    cont = [f for f in CONT_DIMS if f in dims]
     rng = np.random.default_rng(seed)
     segs = spec["segments"]
     weights = np.array([s["weight"] for s in segs])
     weights /= weights.sum()
     counts = rng.multinomial(n, weights)
-    base = real[SEG_DIMS].to_numpy(dtype=float)
+    base = real[dims].to_numpy(dtype=float)
     frames = []
     for s, c in zip(segs, counts):
         if c <= 0:
@@ -73,18 +82,23 @@ def generate(spec: dict, teacher, real: pd.DataFrame, n: int, seed: int = 7) -> 
         pick = members[rng.integers(0, len(members), size=c)]
         blk = base[pick].copy()
         # jitter smooth dims only (~5% of global std), then clip to real p1/p99
-        for j, f in enumerate(SEG_DIMS):
-            if f in CONT_DIMS:
+        for j, f in enumerate(dims):
+            if f in cont:
                 blk[:, j] += rng.normal(0, 0.05 * spec["stds"][f], size=c)
             lo, hi = spec["clips"][f]
             blk[:, j] = np.clip(blk[:, j], lo, hi)
-        frames.append(pd.DataFrame(blk, columns=SEG_DIMS))
+        frames.append(pd.DataFrame(blk, columns=dims))
     df = pd.concat(frames, ignore_index=True)
     for f, (lo, hi) in INT_DIMS.items():
-        df[f] = df[f].round().clip(lo, hi).astype(int)
-    df["late_count"] = df[["late_count", "severe_count"]].max(axis=1).astype(int)
+        if f in df.columns:
+            df[f] = df[f].round().clip(lo, hi).astype(int)
+    if {"late_count", "severe_count"} <= set(df.columns):
+        df["late_count"] = df[["late_count", "severe_count"]].max(axis=1).astype(int)
     # tenure conditioned on age (documented assumption, ranges only)
-    age = df["age"].to_numpy()
+    if "age" in df.columns:
+        age = df["age"].to_numpy()
+    else:
+        age = np.full(len(df), 35.0)
     df["tenure_months"] = np.minimum(
         84, np.maximum(6, ((age - 21) * 6 * rng.uniform(0.5, 1.0, len(df))).round())).astype(int)
     # city + weakly jittered prior risk
@@ -92,10 +106,11 @@ def generate(spec: dict, teacher, real: pd.DataFrame, n: int, seed: int = 7) -> 
     df["city"] = cities
     df["city_risk"] = np.array([CITY_PRIOR[c] for c in cities]) * rng.lognormal(0, 0.08, len(df))
     # labels from the real-fitted teacher + flip noise
-    p = teacher.predict_proba(df[SEG_DIMS].to_numpy(dtype=float))[:, 1]
+    p = teacher.predict_proba(df[dims].to_numpy(dtype=float))[:, 1]
     p = np.clip(p, 0.02, 0.98)
     flips = rng.random(len(df)) < 0.02
     y = (rng.random(len(df)) < p).astype(int)
     y[flips] = 1 - y[flips]
     df["default"] = y
-    return df[FEATURES + ["default", "city"]]
+    keep = [f for f in FEATURES if f not in (exclude or set())]
+    return df[keep + ["default", "city"]]

@@ -1,7 +1,11 @@
 const BASE = "/api";
-// Serverless backends sleep when idle: first request wakes them (cold start).
-// Never hang silently — give up with a clear message so the UI can retry.
+// Serverless + free-tier backends sleep when idle: the FIRST request wakes
+// them (cold start, up to ~90s on Render Docker) and gets one automatic
+// retry. Later requests use the normal budget. Retried at most once each —
+// no infinite loops. Settles to a clear, safe message otherwise.
+const FIRST_TIMEOUT_MS = 90000;
 const REQUEST_TIMEOUT_MS = 45000;
+let firstRequestDone = false;
 
 // Authentication rides the HttpOnly session cookie (same-origin, sent
 // automatically). NOTHING that can authenticate is ever kept in JS memory
@@ -16,12 +20,11 @@ function hasProfile() {
   try { return !!localStorage.getItem("ls_profile"); } catch { return false; }
 }
 
-export async function api(path, opts = {}, token = null) {
-  let r;
+async function fetchOnce(path, opts, timeoutMs) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    r = await fetch(`${BASE}${path}`, {
+    return await fetch(`${BASE}${path}`, {
       ...opts,
       signal: ctrl.signal,
       headers: {
@@ -29,6 +32,27 @@ export async function api(path, opts = {}, token = null) {
         ...(opts.headers || {}),
       },
     });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function api(path, opts = {}, token = null) {
+  const first = !firstRequestDone;
+  let r;
+  try {
+    try {
+      r = await fetchOnce(path, opts, first ? FIRST_TIMEOUT_MS : REQUEST_TIMEOUT_MS);
+    } catch (e) {
+      // One automatic retry for the waking-server case only.
+      if (first && (e?.name === "AbortError" || e instanceof TypeError)) {
+        r = await fetchOnce(path, opts, FIRST_TIMEOUT_MS);
+      } else {
+        throw e;
+      }
+    } finally {
+      firstRequestDone = true;
+    }
   } catch (e) {
     if (e?.name === "AbortError") {
       throw new Error(
@@ -39,8 +63,6 @@ export async function api(path, opts = {}, token = null) {
       "Cannot reach the LendSure server. Start it first by running " +
       "`./start.sh` in the project folder (or: python3 -m uvicorn app:app --host 127.0.0.1 --port 8000 in backend/)."
     );
-  } finally {
-    clearTimeout(timer);
   }
   if (r.status === 401) {
     flagExpired();
@@ -58,6 +80,11 @@ export async function api(path, opts = {}, token = null) {
       const body = await r.json();
       msg = body.detail || msg;
     } catch {}
+    if (r.status >= 500) {
+      // Never show stack traces / SQL / paths to users — log for devs only.
+      try { console.error(`[api] ${r.status} ${path}:`, msg); } catch {}
+      throw new Error("Something went wrong. Please try again.");
+    }
     throw new Error(msg);
   }
   return r.json();
@@ -133,8 +160,8 @@ export const admin = {
   model: (token) => api("/ls/admin/model", {}, token),
   audit: (limit, token) => api(`/ls/admin/audit?limit=${limit || 50}`, {}, token),
   keys: (token) => api("/ls/admin/keys", {}, token),
-  createKey: (name, token) =>
-    api("/ls/admin/keys", { method: "POST", body: JSON.stringify({ name }) }, token),
+  createKey: (name, token, opts = {}) =>
+    api("/ls/admin/keys", { method: "POST", body: JSON.stringify({ name, scopes: opts.scopes || "read", expires_days: opts.expires_days || 90 }) }, token),
   revokeKey: (id, token) =>
     api(`/ls/admin/keys/${id}/revoke`, { method: "POST" }, token),
   overview: (token) => api("/ls/admin/overview", {}, token),

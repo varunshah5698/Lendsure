@@ -57,14 +57,18 @@ class FinancialService:
 
     @staticmethod
     def interpret(b: dict) -> list[str]:
+        # Sparse/legacy borrower rows carry NULLs — never crash the narrative.
+        def g(key, default=0.0):
+            v = b.get(key, default)
+            return default if v is None else v
         out = []
-        v = b["income_volatility"]
+        v = g("income_volatility")
         out.append("Income is stable" if v < 0.12 else ("Income is moderately variable" if v < 0.25 else "Income is highly variable"))
-        dt = b["debt_trend"]
+        dt = g("debt_trend")
         out.append("Debt is increasing" if dt > 0.03 else ("Debt is decreasing" if dt < -0.03 else "Debt is flat"))
-        et = b["expense_trend"]
+        et = g("expense_trend")
         out.append("Expenses are moderately increasing" if et > 0.03 else ("Expenses are easing" if et < -0.03 else "Expenses are steady"))
-        dti = (b["avg_debt_6m"] / b["avg_income_6m"]) if b["avg_income_6m"] else 9
+        dti = (g("avg_debt_6m") / g("avg_income_6m")) if g("avg_income_6m") else 9
         out.append("Debt burden is high relative to income" if dti > 0.6 else "Debt burden looks manageable")
         return out
 
@@ -80,13 +84,16 @@ class RiskEngine:
         f = FinancialService.derived(b, [])
         parts: list[dict] = []
 
-        if b["prev_loans"] == 0:
+        if b["prev_loans"] == 0 and not any([
+                b["loans_repaid"], b["late_payments"], b["defaults"], b["max_days_past_due"]]):
             rep = 45.0
             obs = "No prior loans (thin file)"
         else:
+            # Recorded history always counts, even when prev_loans is 0 —
+            # otherwise bad history on thin files scores a free pass.
             rep = clamp(b["defaults"] * 28 + b["late_payments"] * 5 + b["max_days_past_due"] * 0.5
                         + (b["avg_delay_days"] * 0.4 if b["late_payments"] else 0))
-            obs = f"{b['loans_repaid']}/{b['prev_loans']} repaid, {b['late_payments']} late, {b['defaults']} defaults"
+            obs = f"{b['loans_repaid']}/{max(b['prev_loans'], b['loans_repaid'] + b['late_payments'] + b['defaults'], 1)} repaid, {b['late_payments']} late, {b['defaults']} defaults"
         parts.append({"code": "repayment_history", "title": "Repayment history",
                       "observed": obs, "score": round(rep, 1), "weight": 30,
                       "impact": "raises" if rep >= 50 else "lowers",
@@ -242,11 +249,14 @@ class TrustEngine:
         out.append({"code": "documents", "title": "Documents", "score": round(doc_s, 1), "weight": 15,
                     "evidence": f"{len(docs)} documents on file, quality {q}/100."})
 
-        if b["prev_loans"] == 0:
+        if b["prev_loans"] == 0 and not any([
+                b["loans_repaid"], b["late_payments"], b["defaults"], b["max_days_past_due"]]):
             rep_s, rep_e = 45.0, "No prior loans — neutral starting point."
         else:
+            # Any recorded history (even with prev_loans==0) must count:
+            # otherwise defaults/lates on thin files score a free pass.
             rep_s = clamp(100 - b["defaults"] * 30 - b["late_payments"] * 6 - b["max_days_past_due"] * 0.4)
-            rep_e = f"{b['loans_repaid']}/{b['prev_loans']} repaid."
+            rep_e = f"{b['loans_repaid']}/{max(b['prev_loans'], b['loans_repaid'] + b['late_payments'] + b['defaults'], 1)} repaid."
         out.append({"code": "repayment", "title": "Repayment", "score": round(rep_s, 1), "weight": 20, "evidence": rep_e})
 
         fin_s = clamp(100 - f["dti"] * 80 - b["income_volatility"] * 120 + max(0, f["repayment_capacity"]) * 30)
@@ -372,10 +382,45 @@ class EvidenceService:
         return g
 
 
+# Neutral defaults for missing/NULL borrower fields. Real DB rows always
+# carry values, so this changes nothing for them — it only stops sparse or
+# legacy rows from crashing the pipeline with KeyError/TypeError.
+# Unknown keys default to 0; known text keys default to "".
+_BORROWER_TEXT_KEYS = {"borrower_id", "name", "city", "employment_type", "purpose"}
+
+# Every key the engine reads directly. Missing/NULL fields fall back to the
+# neutral zero so sparse or legacy rows analyze instead of crashing.
+_BORROWER_NUM_KEYS = (
+    "age tenure_months employment_years monthly_income requested_amount "
+    "avg_income_6m avg_expenses_6m avg_debt_6m late_payments max_days_past_due "
+    "defaults loans_repaid prev_loans vouches_count avg_vouch_trust "
+    "applications_30d disputed_txns_6m bounced_payments_6m phone_verification "
+    "address_verification id_verification night_txn_ratio income_volatility "
+    "first_time_borrower transaction_variance new_device_90d income_doc_status "
+    "group_memberships existing_debt_accounts doc_quality_score doc_avg_income "
+    "disputes_raised disputes_lost bank_stmt_status avg_delay_days "
+    "ontime_streak_months salary_credits_6m account_age_months savings_balance "
+    "total_transactions_6m debt_trend expense_trend household_size dependents "
+    "credit_score bureau_score community_tenure_years"
+).split()
+
+
+def _normalize_borrower(b: dict) -> dict:
+    out = {k: ("" if k in _BORROWER_TEXT_KEYS else 0) for k in _BORROWER_TEXT_KEYS | set(_BORROWER_NUM_KEYS)}
+    out["age"] = 30
+    out["tenure_months"] = 12
+    for k, v in (b or {}).items():
+        if v is None:
+            continue  # keep neutral default
+        out[k] = v
+    return out
+
+
 def full_analysis(b: dict, snaps: list[dict], docs: list[dict], dup_phone: bool, cfg: dict) -> dict:
     """Run the whole pipeline. Pure function — easy to unit test."""
     from .ml import MODEL_ID as ML_ID, predict_proba
     from .schema import MODEL_VERSION as RULES_ID
+    b = _normalize_borrower(b)
     fin = FinancialService.derived(b, snaps)
     ml_p = predict_proba(b)
     risk = RiskEngine.run(b, cfg, ml_p)

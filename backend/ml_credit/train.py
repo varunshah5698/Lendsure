@@ -83,7 +83,20 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--n-synth", type=int, default=1_000_000)
     ap.add_argument("--quick", action="store_true")
+    ap.add_argument("--exclude", default="",
+                    help="comma-separated FEATURES to drop (fairness ablation, e.g. age,city_risk)")
+    ap.add_argument("--out", default="credit_v4", help="models/<name> output dir")
+    ap.add_argument("--only", default="",
+                    help="comma subset of candidates to train (xgboost,lightgbm,hgb,random_forest_200k)")
     args = ap.parse_args()
+    excluded = {f.strip() for f in args.exclude.split(",") if f.strip()}
+    unknown = excluded - set(FEATURES)
+    if unknown:
+        raise SystemExit(f"unknown features in --exclude: {sorted(unknown)}")
+    ACTIVE = [f for f in FEATURES if f not in excluded]
+    print(f"[train] excluded features: {sorted(excluded) or 'none'} -> {len(ACTIVE)} active", flush=True)
+    global OUT_DIR
+    OUT_DIR = BASE.parent / "models" / args.out
     t0 = time.time()
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -99,27 +112,30 @@ def main():
     fit_eng = engineer_train(fit_df)
     sel_eng = engineer_train(sel_df)
     test_eng = engineer_train(test_df)
-    Xs, ys = sel_eng[FEATURES].to_numpy(float), sel_eng["default"].to_numpy(int)
-    Xt, yt = test_eng[FEATURES].to_numpy(float), test_eng["default"].to_numpy(int)
+    Xs, ys = sel_eng[ACTIVE].to_numpy(float), sel_eng["default"].to_numpy(int)
+    Xt, yt = test_eng[ACTIVE].to_numpy(float), test_eng["default"].to_numpy(int)
 
-    spec = fit_segments(fit_eng, k=16, seed=SEED)
-    teacher = fit_teacher(fit_eng, seed=SEED)
+    spec = fit_segments(fit_eng, k=16, seed=SEED, exclude=excluded)
+    teacher = fit_teacher(fit_eng, seed=SEED, exclude=excluded)
     n_synth = 50_000 if args.quick else args.n_synth
-    synth = generate(spec, teacher, fit_eng, n_synth, seed=7)
+    synth = generate(spec, teacher, fit_eng, n_synth, seed=7, exclude=excluded)
     print(f"[train] synthetic rows: {len(synth)} default_rate={synth['default'].mean():.4f}", flush=True)
 
-    train_pool = pd.concat([fit_eng[FEATURES + ["default"]], synth[FEATURES + ["default"]]],
+    train_pool = pd.concat([fit_eng[ACTIVE + ["default"]], synth[ACTIVE + ["default"]]],
                            ignore_index=True)
     is_real = np.array([True] * len(fit_eng) + [False] * len(synth))
     # Real rows upweighted x20 so 15k real rows carry weight beside 1M synthetic.
     sample_weight = np.where(is_real, 20.0, 1.0)
 
     # city target-encoding fitted on TRAIN labels only (synthetic cities; real rows NaN->median)
-    city_rates = synth.groupby("city")["default"].mean().to_dict()
-    city_encoder = {**city_rates, "__median__": float(np.median(list(city_rates.values())))}
-    Xtr_raw = train_pool[FEATURES].copy()
-    mask_synth_city = ~is_real
-    Xtr_raw.loc[mask_synth_city, "city_risk"] = synth["city_risk"].to_numpy()
+    city_encoder = {"__median__": GLOBAL_PRIOR}
+    if "city_risk" in ACTIVE:
+        city_rates = synth.groupby("city")["default"].mean().to_dict()
+        city_encoder = {**city_rates, "__median__": float(np.median(list(city_rates.values())))}
+    Xtr_raw = train_pool[ACTIVE].copy()
+    if "city_risk" in ACTIVE:
+        mask_synth_city = ~is_real
+        Xtr_raw.loc[mask_synth_city, "city_risk"] = synth["city_risk"].to_numpy()
 
     pre = Pipeline([("impute", SimpleImputer(strategy="median")),
                     ("scale", StandardScaler())])
@@ -129,44 +145,49 @@ def main():
     import xgboost as xgb
     import lightgbm as lgb
 
+    only = {c.strip() for c in args.only.split(",") if c.strip()}
     cands = {}
-    print("[train] xgboost…", flush=True)
-    x = xgb.XGBClassifier(n_estimators=3000, learning_rate=0.05, max_depth=6,
-                          subsample=0.8, colsample_bytree=0.8, reg_lambda=2.0,
-                          scale_pos_weight=float((ytr == 0).sum() / max((ytr == 1).sum(), 1)),
-                          tree_method="hist", n_jobs=8, random_state=SEED,
-                          early_stopping_rounds=100, eval_metric="logloss")
-    x.fit(Xtr, ytr, sample_weight=sample_weight, eval_set=[(pre.transform(Xs), ys)], verbose=False)
-    cands["xgboost"] = x
+    if not only or "xgboost" in only:
+        print("[train] xgboost…", flush=True)
+        x = xgb.XGBClassifier(n_estimators=3000, learning_rate=0.05, max_depth=6,
+                              subsample=0.8, colsample_bytree=0.8, reg_lambda=2.0,
+                              scale_pos_weight=float((ytr == 0).sum() / max((ytr == 1).sum(), 1)),
+                              tree_method="hist", n_jobs=8, random_state=SEED,
+                              early_stopping_rounds=100, eval_metric="logloss")
+        x.fit(Xtr, ytr, sample_weight=sample_weight, eval_set=[(pre.transform(Xs), ys)], verbose=False)
+        cands["xgboost"] = x
 
-    print("[train] lightgbm…", flush=True)
-    l = lgb.LGBMClassifier(n_estimators=3000, learning_rate=0.05, num_leaves=63,
-                           subsample=0.8, colsample_bytree=0.8, reg_lambda=2.0,
-                           scale_pos_weight=float((ytr == 0).sum() / max((ytr == 1).sum(), 1)),
-                           n_jobs=8, random_state=SEED, verbose=-1)
-    l.fit(Xtr, ytr, sample_weight=sample_weight,
-          eval_set=[(pre.transform(Xs), ys)],
-          callbacks=[lgb.early_stopping(100, verbose=False)])
-    cands["lightgbm"] = l
+    if not only or "lightgbm" in only:
+        print("[train] lightgbm…", flush=True)
+        l = lgb.LGBMClassifier(n_estimators=3000, learning_rate=0.05, num_leaves=63,
+                               subsample=0.8, colsample_bytree=0.8, reg_lambda=2.0,
+                               scale_pos_weight=float((ytr == 0).sum() / max((ytr == 1).sum(), 1)),
+                               n_jobs=8, random_state=SEED, verbose=-1)
+        l.fit(Xtr, ytr, sample_weight=sample_weight,
+              eval_set=[(pre.transform(Xs), ys)],
+              callbacks=[lgb.early_stopping(100, verbose=False)])
+        cands["lightgbm"] = l
 
-    print("[train] hist-gradient-boosting…", flush=True)
-    h = HistGradientBoostingClassifier(max_iter=400, learning_rate=0.06,
-                                       max_leaf_nodes=63, l2_regularization=1.0,
-                                       class_weight="balanced", random_state=SEED)
-    h.fit(Xtr, ytr, sample_weight=sample_weight)
-    cands["hgb"] = h
+    if not only or "hgb" in only:
+        print("[train] hist-gradient-boosting…", flush=True)
+        h = HistGradientBoostingClassifier(max_iter=400, learning_rate=0.06,
+                                           max_leaf_nodes=63, l2_regularization=1.0,
+                                           class_weight="balanced", random_state=SEED)
+        h.fit(Xtr, ytr, sample_weight=sample_weight)
+        cands["hgb"] = h
 
-    print("[train] random-forest (200k stratified subsample)…", flush=True)
-    sub_n = min(200_000, len(ytr))
-    if sub_n >= len(ytr):
-        sub_idx = np.arange(len(ytr))
-    else:
-        sub_idx = train_test_split(np.arange(len(ytr)), train_size=sub_n,
-                                   stratify=ytr, random_state=SEED)[0]
-    r = RandomForestClassifier(n_estimators=250, min_samples_leaf=20, n_jobs=8,
-                               class_weight="balanced_subsample", random_state=SEED)
-    r.fit(Xtr[sub_idx], ytr[sub_idx])
-    cands["random_forest_200k"] = r
+    if not only or "random_forest_200k" in only:
+        print("[train] random-forest (200k stratified subsample)…", flush=True)
+        sub_n = min(200_000, len(ytr))
+        if sub_n >= len(ytr):
+            sub_idx = np.arange(len(ytr))
+        else:
+            sub_idx = train_test_split(np.arange(len(ytr)), train_size=sub_n,
+                                       stratify=ytr, random_state=SEED)[0]
+        r = RandomForestClassifier(n_estimators=250, min_samples_leaf=20, n_jobs=8,
+                                   class_weight="balanced_subsample", random_state=SEED)
+        r.fit(Xtr[sub_idx], ytr[sub_idx])
+        cands["random_forest_200k"] = r
 
     select_metrics = {}
     for name, m in cands.items():
@@ -195,7 +216,7 @@ def main():
     import sklearn, joblib as _jl
     joblib.dump(cal, OUT_DIR / "model.joblib")
     joblib.dump(pre, OUT_DIR / "preprocessor.joblib")
-    (OUT_DIR / "features.json").write_text(json.dumps(FEATURES, indent=1))
+    (OUT_DIR / "features.json").write_text(json.dumps(ACTIVE, indent=1))
     (OUT_DIR / "city_encoder.json").write_text(json.dumps(city_encoder, indent=1))
     import xgboost as _x, lightgbm as _l
     metadata = {
@@ -217,6 +238,13 @@ def main():
         },
         "splits": {"fit_real": len(fit_df), "select_real": len(sel_df), "test_real": len(test_df),
                    "seed": SEED},
+        "excluded_features": sorted(excluded),
+        "active_features": ACTIVE,
+        "fairness_note": ("Demo model; tuned to catch potential defaults, so some flags will be incorrect. "
+                          "Age and city are included for demonstration purposes and must be "
+                          "reviewed/removed before real-world lending decisions." if not excluded else
+                          "Demo model; tuned to catch potential defaults, so some flags will be incorrect. "
+                          "Retrained without " + ", ".join(sorted(excluded)) + " for fairness."),
         "candidates_select_real": select_metrics,
         "selected": best,
         "selection_criterion": "max PR-AUC on REAL select split (average precision; robust to imbalance)",

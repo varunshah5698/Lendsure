@@ -10,6 +10,7 @@ import Badge from "../components/ui/Badge";
 import CopyButton from "../components/ui/CopyButton";
 import EmptyState from "../components/ui/EmptyState";
 import ErrorState from "../components/ui/ErrorState";
+import { formatDate } from "../lib/dates";
 import { SkeletonTable } from "../components/ui/Skeleton";
 
 export default function AdminSettings() {
@@ -20,7 +21,10 @@ export default function AdminSettings() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [newKeyName, setNewKeyName] = useState("");
+  const [newKeyScope, setNewKeyScope] = useState("read");
+  const [newKeyDays, setNewKeyDays] = useState(90);
   const [newKey, setNewKey] = useState(null);
+  const [newKeyMeta, setNewKeyMeta] = useState(null);
 
   const loadAll = useCallback(async () => {
     try {
@@ -38,8 +42,9 @@ export default function AdminSettings() {
     if (!guardLender(session, toast)) return;
     if (newKeyName.trim().length < 2) return toast.error("Give the key a label");
     try {
-      const d = await admin.createKey(newKeyName.trim(), session.token);
+      const d = await admin.createKey(newKeyName.trim(), session.token, { scopes: newKeyScope, expires_days: newKeyDays });
       setNewKey(d.key);
+      setNewKeyMeta({ scopes: d.scopes, expires_at: d.expires_at });
       setNewKeyName("");
       toast.success("API key created");
       loadAll();
@@ -105,12 +110,22 @@ export default function AdminSettings() {
               className="filter-search-input"
               style={{ maxWidth: 300 }}
             />
+            <select value={newKeyScope} onChange={(e) => setNewKeyScope(e.target.value)} className="filter-select" title="Permission scope">
+              <option value="read">read-only</option>
+              <option value="write">read + write</option>
+              <option value="admin">admin (full)</option>
+            </select>
+            <select value={newKeyDays} onChange={(e) => setNewKeyDays(Number(e.target.value))} className="filter-select" title="Expiry">
+              <option value={30}>30 days</option>
+              <option value={90}>90 days</option>
+              <option value={365}>1 year</option>
+            </select>
             <Button variant="primary" size="sm" onClick={createKey} disabled={isGuest(session)} title={isGuest(session) ? "Sign in with Phone OTP for lender actions" : "Create API key"}>＋ Create key</Button>
           </div>
 
           {newKey && (
             <div className="settings-key-once">
-              <span>New key — copy now, it won't be shown again:</span>
+              <span>New key — copy now, it won't be shown again{newKeyMeta ? ` (${newKeyMeta.scopes}, expires ${formatDate(newKeyMeta.expires_at)})` : ""}:</span>
               <code className="settings-key-value">{newKey}</code>
               <CopyButton text={newKey} label="Key" />
             </div>
@@ -120,16 +135,18 @@ export default function AdminSettings() {
             <div className="table-wrap" style={{ marginTop: 12 }}>
               <table className="data-table">
                 <thead>
-                  <tr><th>Label</th><th>Key</th><th>Created</th><th>Last used</th><th>Status</th><th></th></tr>
+                  <tr><th>Label</th><th>Key</th><th>Scopes</th><th>Expires</th><th>Created</th><th>Last used</th><th>Status</th><th></th></tr>
                 </thead>
                 <tbody>
                   {keys.map((k) => (
                     <tr key={k.id}>
                       <td><b>{k.name}</b></td>
                       <td><code style={{ fontSize: 12 }}>{k.prefix}</code></td>
-                      <td style={{ color: "var(--text-muted)", fontSize: 12 }}>{new Date(k.created_at + "Z").toLocaleDateString()}</td>
-                      <td style={{ color: "var(--text-muted)", fontSize: 12 }}>{k.last_used ? new Date(k.last_used + "Z").toLocaleString() : "—"}</td>
-                      <td>{k.revoked ? <Badge variant="HIGH">Revoked</Badge> : <Badge variant="APPROVE">Active</Badge>}</td>
+                      <td style={{ fontSize: 12 }}>{k.scopes || "read"}</td>
+                      <td style={{ color: "var(--text-muted)", fontSize: 12 }}>{k.expires_at ? formatDate(k.expires_at, { dateOnly: true }) : "never (legacy)"}</td>
+                      <td style={{ color: "var(--text-muted)", fontSize: 12 }}>{formatDate(k.created_at, { dateOnly: true })}</td>
+                      <td style={{ color: "var(--text-muted)", fontSize: 12 }}>{k.last_used ? formatDate(k.last_used) : "—"}</td>
+                      <td>{k.revoked || k.expired ? <Badge variant="HIGH">{k.expired && !k.revoked ? "Expired" : "Revoked"}</Badge> : <Badge variant="APPROVE">Active</Badge>}</td>
                       <td>{!k.revoked && <Button variant="ghost" size="sm" onClick={() => revokeKey(k.id)} disabled={isGuest(session)} title={isGuest(session) ? "Sign in with Phone OTP for lender actions" : "Revoke key"}>Revoke</Button>}</td>
                     </tr>
                   ))}
@@ -156,15 +173,15 @@ export default function AdminSettings() {
                 </thead>
                 <tbody>
                   {sessions.map((s) => (
-                    <tr key={s.token}>
+                    <tr key={s.id}>
                       <td><b>{s.display_name}</b> <code style={{ fontSize: 11 }}>{s.token_prefix}</code>{s.current ? <span style={{ fontSize: 11, color: "var(--primary)", fontWeight: 700 }}> · this device</span> : ""}</td>
                       <td style={{ textTransform: "capitalize" }}>{s.role}</td>
                       <td style={{ color: "var(--text-muted)", fontSize: 12 }}>{s.phone}</td>
-                      <td style={{ color: "var(--text-muted)", fontSize: 12 }}>{new Date(s.created_at + "Z").toLocaleString()}</td>
+                      <td style={{ color: "var(--text-muted)", fontSize: 12 }}>{formatDate(s.created_at)}</td>
                       <td>{s.expired ? <Badge variant="HIGH">Expired</Badge> : <Badge variant="APPROVE">Active</Badge>}</td>
                       <td>
                         {!s.expired && (
-                          <Button variant="ghost" size="sm" onClick={() => revokeSession(s.token, s.display_name)} disabled={isGuest(session)} title={isGuest(session) ? "Sign in with Phone OTP for lender actions" : "Sign out session"}>
+                          <Button variant="ghost" size="sm" onClick={() => revokeSession(s.id, s.display_name)} disabled={isGuest(session)} title={isGuest(session) ? "Sign in with Phone OTP for lender actions" : "Sign out session"}>
                             Sign out
                           </Button>
                         )}

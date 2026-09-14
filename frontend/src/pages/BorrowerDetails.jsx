@@ -48,6 +48,7 @@ export default function BorrowerDetails() {
   const [financials, setFinancials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [drafting, setDrafting] = useState(false);
   const [evidence, setEvidence] = useState(null);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [changed, setChanged] = useState(null);
@@ -144,8 +145,10 @@ export default function BorrowerDetails() {
             } catch { /* dismissed */ }
           }}>↗ Share</Button>
           <Button variant="primary" size="sm" onClick={reRun} disabled={session?.role === "guest"} title={session?.role === "guest" ? "Sign in with Phone OTP for lender actions" : "Re-run analysis"}>↻ Re-run</Button>
-          <Button variant="primary" size="sm" onClick={async () => {
+          <Button variant="primary" size="sm" disabled={drafting} onClick={async () => {
             if (session?.role === "guest") return toast.error("Guests are read-only — sign in with Phone OTP for lender actions");
+            if (drafting) return;
+            setDrafting(true);
             try {
               const { loans } = await import("../lib/api");
               const r = await loans.createRequest({
@@ -156,7 +159,8 @@ export default function BorrowerDetails() {
               toast.success(r.duplicate ? "Draft already exists — opening it" : "Loan request drafted");
               navigate(`/loan-requests/${r.id}`);
             } catch (e) { toast.error("Request failed: " + e.message); }
-          }}>＋ New loan request</Button>
+            finally { setDrafting(false); }
+          }}>{drafting ? "Drafting…" : "＋ New loan request"}</Button>
         </div>
       </div>
 

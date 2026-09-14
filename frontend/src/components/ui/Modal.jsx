@@ -3,13 +3,32 @@ import "./Modal.css";
 
 export default function Modal({ open, onClose, title, description, children, actions, width = 480 }) {
   const ref = useRef(null);
+  const prevFocus = useRef(null);
 
   useEffect(() => {
     if (!open) return;
-    const handler = (e) => { if (e.key === "Escape") onClose(); };
+    // Restore focus to whatever opened the modal when it closes.
+    prevFocus.current = document.activeElement;
+    const handler = (e) => {
+      if (e.key === "Escape") { onClose(); return; }
+      // Focus trap: keep Tab cycling inside the dialog.
+      if (e.key === "Tab" && ref.current) {
+        const items = ref.current.querySelectorAll(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+        const vis = [...items].filter((el) => !el.disabled && el.offsetParent !== null);
+        if (!vis.length) return;
+        const first = vis[0];
+        const last = vis[vis.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    };
     document.addEventListener("keydown", handler);
     ref.current?.focus();
-    return () => document.removeEventListener("keydown", handler);
+    return () => {
+      document.removeEventListener("keydown", handler);
+      if (prevFocus.current && prevFocus.current.focus) prevFocus.current.focus();
+    };
   }, [open, onClose]);
 
   if (!open) return null;

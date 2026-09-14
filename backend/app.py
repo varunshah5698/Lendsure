@@ -27,26 +27,36 @@ from pydantic import BaseModel, Field
 from lendsure.schema import DDL as LS_DDL, LIFECYCLE_DDL, LS_MIGRATIONS
 
 BASE_DIR = Path(__file__).parent
-SEED_DB_PATH = BASE_DIR / "lending.db"
+LIVE_DB_PATH = BASE_DIR / "lending.db"
+SEED_DB_PATH = BASE_DIR / "seed" / "lending.db"
 
 
 def _resolve_db_path() -> Path:
     """Where the live SQLite file lives.
 
-    Locally / Docker: the bundled file next to the code.
+    The live DB is git-ignored (never commit data/PII). Fresh checkouts and
+    deploys seed it once from backend/seed/lending.db, which IS tracked.
     Vercel serverless: the deployment filesystem is read-only, so login
     (which writes session/OTP rows) can never work there. Run from /tmp
-    instead, seeded from the bundled file on cold boot.
+    instead, seeded from the live-or-seed file on cold boot.
     """
+    live = LIVE_DB_PATH
+    if not live.exists() and SEED_DB_PATH.exists():
+        try:
+            shutil.copyfile(SEED_DB_PATH, live)
+            print(f"[db] seeded live database from {SEED_DB_PATH.name}", flush=True)
+        except Exception as e:
+            print(f"[db] seed copy failed: {e}", flush=True)
     if os.environ.get("VERCEL"):
-        live = Path("/tmp/lending.db")
-        if not live.exists():
+        tmp = Path("/tmp/lending.db")
+        if not tmp.exists():
+            src = live if live.exists() else SEED_DB_PATH
             try:
-                shutil.copyfile(SEED_DB_PATH, live)
+                shutil.copyfile(src, tmp)
             except Exception:
                 pass  # fall through to a fresh empty DB
-        return live
-    return SEED_DB_PATH
+        return tmp
+    return live
 
 
 DB_PATH = _resolve_db_path()
@@ -66,7 +76,63 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_RATE_BUCKETS: dict[str, deque] = {}
+_RATE_BUCKETS: dict[str, deque] = {}  # legacy in-memory fallback (unused; kept for tests)
+
+
+def _rate_check(host: str, limit: int, window: int) -> bool:
+    """Sliding-window rate gate backed by SQLite — survives restarts and
+    works across workers (unlike the old in-memory buckets). Returns True
+    when the hit is allowed (and records it)."""
+    now_t = time.time()
+    conn = db()
+    try:
+        conn.execute("CREATE TABLE IF NOT EXISTS ls_rate_hits (ip TEXT NOT NULL, tier TEXT NOT NULL, ts REAL NOT NULL)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_rate ON ls_rate_hits (ip, tier, ts)")
+        tier = f"{limit}/{window}"
+        conn.execute("DELETE FROM ls_rate_hits WHERE ts <= ?", (now_t - window,))
+        n = conn.execute("SELECT COUNT(*) c FROM ls_rate_hits WHERE ip=? AND tier=? AND ts > ?",
+                         (host, tier, now_t - window)).fetchone()["c"]
+        if n >= limit:
+            conn.commit()
+            return False
+        conn.execute("INSERT INTO ls_rate_hits (ip, tier, ts) VALUES (?,?,?)", (host, tier, now_t))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def _login_lock_get(email: str) -> tuple[int, float]:
+    conn = db()
+    try:
+        conn.execute("CREATE TABLE IF NOT EXISTS ls_login_locks (email TEXT PRIMARY KEY, fails INTEGER DEFAULT 0, locked_until REAL DEFAULT 0)")
+        row = conn.execute("SELECT fails, locked_until FROM ls_login_locks WHERE email=?", (email,)).fetchone()
+        return (row["fails"], row["locked_until"]) if row else (0, 0.0)
+    finally:
+        conn.close()
+
+
+def _login_lock_fail(email: str):
+    fails, _ = _login_lock_get(email)
+    fails += 1
+    locked_until = time.time() + 900 if fails >= 5 else 0.0
+    conn = db()
+    try:
+        conn.execute("INSERT INTO ls_login_locks (email, fails, locked_until) VALUES (?,?,?)"
+                     " ON CONFLICT(email) DO UPDATE SET fails=excluded.fails, locked_until=excluded.locked_until",
+                     (email, fails, locked_until))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _login_lock_clear(email: str):
+    conn = db()
+    try:
+        conn.execute("DELETE FROM ls_login_locks WHERE email=?", (email,))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _rate_tier(path: str) -> tuple[int, int]:
@@ -138,19 +204,10 @@ async def security_middleware(request: Request, call_next):
     if not (p.startswith("/static") or p in ("/docs", "/openapi.json", "/redoc")):
         limit, window = _rate_tier(p)
         host = request.client.host if request.client else "?"
-        dq = _RATE_BUCKETS.get(f"{host}:{limit}:{window}")
-        if dq is None:
-            dq = _RATE_BUCKETS[f"{host}:{limit}:{window}"] = deque()
-        now_t = time.time()
-        while dq and dq[0] <= now_t - window:
-            dq.popleft()
-        if len(dq) >= limit:
+        if not _rate_check(host, limit, window):
             return JSONResponse(
                 {"detail": "Rate limit exceeded. Slow down and retry."},
                 status_code=429, headers={"X-Request-ID": rid, "Retry-After": "60"})
-        dq.append(now_t)
-        if len(_RATE_BUCKETS) > 5000:
-            _RATE_BUCKETS.clear()
     resp = await call_next(request)
     resp.headers["X-Request-ID"] = rid
     # Cache policy: hashed build assets are immutable; entry HTML never caches
@@ -172,12 +229,10 @@ async def security_middleware(request: Request, call_next):
 def _audit_event(action: str, actor: str, detail: dict):
     """Best-effort audit write — must never break the request it records."""
     try:
+        from lendsure.notify import audit as _audit_log
         conn = db()
         try:
-            conn.execute(
-                "INSERT INTO ls_audit (borrower_id, analysis_id, actor, action, detail, created_at)"
-                " VALUES (?,?,?,?,?,?)",
-                ("*", None, actor, action, json.dumps(detail), datetime.utcnow().isoformat()))
+            _audit_log(conn, "*", None, actor, action, detail)
             conn.commit()
         finally:
             conn.close()
@@ -192,72 +247,78 @@ def db() -> sqlite3.Connection:
     return conn
 
 
+def _apply_migration(conn, name: str, sql: str) -> bool:
+    """Run one named migration atomically. Returns True if applied.
+
+    Skips migrations already in the ledger. A 'duplicate column name' error
+    on one statement means that statement predates the ledger era: tolerate
+    it and continue with the rest. Anything else rolls back and RAISES
+    loudly — a half-migrated database must never boot silently.
+    (Statement loop, not executescript: the latter force-commits and would
+    silently break the atomicity this function promises.)
+    """
+    if conn.execute("SELECT 1 FROM ls_migrations WHERE name=?", (name,)).fetchone():
+        return False
+    conn.commit()
+    prev_level = conn.isolation_level
+    conn.isolation_level = None
+    try:
+        conn.execute("BEGIN")
+        for st in [s.strip() for s in sql.split(";") if s.strip()]:
+            try:
+                conn.execute(st)
+            except sqlite3.OperationalError as err:
+                if "duplicate column name" not in str(err):
+                    raise
+        conn.execute("INSERT INTO ls_migrations (name, applied_at) VALUES (?,?)",
+                     (name, datetime.utcnow().isoformat()))
+        conn.execute("COMMIT")
+        return True
+    except Exception as err:
+        try:
+            conn.execute("ROLLBACK")
+        except Exception:
+            pass
+        print(f"[MIGRATION FAILED] {name}: {err}", flush=True)
+        raise
+    finally:
+        conn.isolation_level = prev_level
+
+
+def _backfill_audit_chain(conn) -> int:
+    """Link pre-chain audit rows (genesis-linked, in id order). Idempotent:
+    returns 0 fast when nothing is unchained. Runs at every boot."""
+    from lendsure.notify import GENESIS_HASH, chain_hash
+    missing = conn.execute(
+        "SELECT COUNT(*) c FROM ls_audit WHERE chain_hash IS NULL OR chain_hash=''").fetchone()["c"]
+    if not missing:
+        return 0
+    rows = conn.execute(
+        "SELECT id, borrower_id, analysis_id, actor, action, detail, created_at"
+        " FROM ls_audit WHERE chain_hash IS NULL OR chain_hash='' ORDER BY id").fetchall()
+    prev_row = conn.execute("SELECT chain_hash FROM ls_audit WHERE chain_hash IS NOT NULL"
+                            " AND chain_hash != '' ORDER BY id DESC LIMIT 1").fetchone()
+    prev = prev_row["chain_hash"] if prev_row else GENESIS_HASH
+    n = 0
+    for r in rows:
+        r = dict(r)
+        ch = chain_hash(prev, r["borrower_id"], r["analysis_id"], r["actor"],
+                        r["action"], r["detail"] or "", r["created_at"] or "")
+        conn.execute("UPDATE ls_audit SET prev_hash=?, chain_hash=? WHERE id=?",
+                     (prev, ch, r["id"]))
+        prev = ch
+        n += 1
+    conn.commit()
+    if n:
+        print(f"[audit] backfilled hash chain for {n} pre-chain rows", flush=True)
+    return n
+
+
 def init_db():
     conn = db()
-    cur = conn.cursor()
-    cur.executescript(
-        """
-        CREATE TABLE IF NOT EXISTS borrowers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            phone TEXT NOT NULL,
-            id_number TEXT NOT NULL,
-            address TEXT DEFAULT '',
-            employment_type TEXT DEFAULT 'self-employed',
-            monthly_income REAL DEFAULT 0,
-            employment_years REAL DEFAULT 0,
-            past_loans_repaid INTEGER DEFAULT 0,
-            past_defaults INTEGER DEFAULT 0,
-            past_delays INTEGER DEFAULT 0,
-            created_at TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS documents (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            borrower_id INTEGER NOT NULL,
-            doc_type TEXT NOT NULL,
-            file_name TEXT DEFAULT '',
-            extracted_income REAL DEFAULT 0,
-            authentic INTEGER DEFAULT 1,
-            notes TEXT DEFAULT ''
-        );
-        CREATE TABLE IF NOT EXISTS vouches (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            borrower_id INTEGER NOT NULL,
-            voucher_name TEXT NOT NULL,
-            relationship TEXT DEFAULT 'community',
-            trust_level INTEGER DEFAULT 3,
-            comment TEXT DEFAULT ''
-        );
-        CREATE TABLE IF NOT EXISTS loans (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            borrower_id INTEGER NOT NULL,
-            requested_amount REAL NOT NULL,
-            tenure_months INTEGER NOT NULL,
-            purpose TEXT DEFAULT 'personal',
-            status TEXT NOT NULL,
-            recommended_amount REAL NOT NULL,
-            interest_rate REAL NOT NULL,
-            risk_level TEXT NOT NULL,
-            trust_score REAL NOT NULL,
-            confidence REAL NOT NULL,
-            explanation_json TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS fraud_flags (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            borrower_id INTEGER NOT NULL,
-            loan_id INTEGER DEFAULT 0,
-            flag_type TEXT NOT NULL,
-            severity TEXT NOT NULL,
-            description TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS audit_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            loan_id INTEGER NOT NULL,
-            action TEXT NOT NULL,
-            detail TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        );
+    try:
+        conn.executescript(
+            """
         CREATE TABLE IF NOT EXISTS otps (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             phone TEXT NOT NULL,
@@ -291,47 +352,21 @@ def init_db():
             created_at TEXT NOT NULL,
             expires_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS ls_migrations (
+            name TEXT PRIMARY KEY,
+            applied_at TEXT NOT NULL
+        );
         """
-    )
-    try:
-        conn.execute("ALTER TABLE sessions ADD COLUMN email TEXT DEFAULT ''")
-    except Exception:
-        pass  # column already exists
-    for _col, _typ in (("last_active", "TEXT"), ("ip", "TEXT DEFAULT ''"),
-                       ("ua_hash", "TEXT DEFAULT ''"), ("device_hash", "TEXT DEFAULT ''")):
-        try:
-            conn.execute(f"ALTER TABLE sessions ADD COLUMN {_col} {_typ}")
-        except Exception:
-            pass  # column already exists
-    conn.execute(
-        """CREATE TABLE IF NOT EXISTS ls_devices (
-            email TEXT NOT NULL,
-            device_hash TEXT NOT NULL,
-            verified INTEGER DEFAULT 0,
-            first_seen TEXT NOT NULL,
-            last_seen TEXT NOT NULL,
-            PRIMARY KEY (email, device_hash)
-        )""")
-    conn.commit()
-    conn.close()
-    # LendSure tables (created if missing; data comes from import_lendsure.py)
-    _ls = db()
-    try:
-        _ls.executescript(LS_DDL)
-        _ls.executescript(LIFECYCLE_DDL)
-        for _col in ("risk_factors", "fraud_signals", "trust_factors", "ml_score"):
-            try:
-                _ls.execute(f"ALTER TABLE ls_analyses ADD COLUMN {_col} TEXT DEFAULT '[]'")
-            except Exception:
-                pass  # column already exists
-        for _mig in LS_MIGRATIONS:
-            try:
-                _ls.execute(_mig)
-            except Exception:
-                pass  # already applied
-        _ls.commit()
+        )
+        # LendSure tables (created if missing; data comes from import scripts)
+        conn.executescript(LS_DDL)
+        conn.executescript(LIFECYCLE_DDL)
+        for _name, _sql in LS_MIGRATIONS:
+            _apply_migration(conn, _name, _sql)
+        _backfill_audit_chain(conn)
+        conn.commit()
     finally:
-        _ls.close()
+        conn.close()
 
 
 init_db()
@@ -393,49 +428,6 @@ from lendsure import credit_risk as cr_api  # noqa: E402
 cr_api.configure(db, _ls_session)
 app.include_router(cr_api.router)
 
-# ---------------- Models ----------------
-
-class BorrowerIn(BaseModel):
-    name: str
-    phone: str
-    id_number: str
-    address: str = ""
-    employment_type: str = "self-employed"
-    monthly_income: float = 0
-    employment_years: float = 0
-    past_loans_repaid: int = 0
-    past_defaults: int = 0
-    past_delays: int = 0
-
-
-class DocIn(BaseModel):
-    doc_type: str = "bank_statement"
-    file_name: str = ""
-    extracted_income: float = 0
-    authentic: bool = True
-    notes: str = ""
-
-
-class VouchIn(BaseModel):
-    voucher_name: str
-    relationship: str = "community"
-    trust_level: int = Field(default=3, ge=1, le=5)
-    comment: str = ""
-
-
-class LoanReqIn(BaseModel):
-    requested_amount: float
-    tenure_months: int = 12
-    purpose: str = "personal"
-
-
-class EvaluateIn(BaseModel):
-    borrower: BorrowerIn
-    documents: list[DocIn] = []
-    vouches: list[VouchIn] = []
-    loan: LoanReqIn
-
-
 class OtpRequestIn(BaseModel):
     phone: str
     name: str = ""
@@ -468,249 +460,6 @@ SESSION_COOKIE = "lendsure_session"
 IDLE_TIMEOUT_SEC = int(os.environ.get("LENDSURE_IDLE_TIMEOUT_SEC", "300"))
 IDLE_TIMEOUT_SEC = max(30, IDLE_TIMEOUT_SEC)  # floor so tests can shrink it
 TOUCH_THROTTLE_SEC = 30  # refresh last_active at most this often (write thrift)
-
-
-# ---------------- Explainable AI engine ----------------
-
-def _evidence(text: str) -> str:
-    return text
-
-
-def score_identity(b: BorrowerIn):
-    """25 pts max"""
-    points = 0.0
-    reasons = []
-    phone_ok = bool(re.match(r"^\d{10}$", b.phone.strip()))
-    id_ok = bool(re.match(r"^[A-Za-z0-9]{6,16}$", b.id_number.strip()))
-    addr_ok = len(b.address.strip()) >= 8
-
-    if phone_ok:
-        points += 10
-        reasons.append(("Phone verified (10-digit)", 10, 10, _evidence(f"Phone {b.phone} format valid")))
-    else:
-        reasons.append(("Phone invalid", 0, 10, _evidence(f"Phone '{b.phone}' failed 10-digit check")))
-    if id_ok:
-        points += 10
-        reasons.append(("Govt ID format valid", 10, 10, _evidence(f"ID {b.id_number} passed format check")))
-    else:
-        reasons.append(("Govt ID invalid", 0, 10, _evidence(f"ID '{b.id_number}' failed format check")))
-    if addr_ok:
-        points += 5
-        reasons.append(("Address present", 5, 5, _evidence("Address length >= 8 chars")))
-    else:
-        reasons.append(("Address missing", 0, 5, _evidence("No usable address provided")))
-    return points, reasons, phone_ok, id_ok
-
-
-def score_financial(b: BorrowerIn, docs: list[DocIn], requested: float):
-    """25 pts max"""
-    points = 0.0
-    reasons = []
-    income = b.monthly_income or 0
-    # affordability: requested <= 6x monthly income is healthy
-    ratio = (requested / income) if income > 0 else 999
-    if income <= 0:
-        reasons.append(("No income stated", 0, 10, _evidence("monthly_income = 0")))
-        aff_pts = 0
-    elif ratio <= 3:
-        aff_pts = 10
-        reasons.append((f"Healthy loan-to-income x{ratio:.1f}", 10, 10, _evidence(f"Requested {requested} vs income {income}/mo")))
-    elif ratio <= 6:
-        aff_pts = 6
-        reasons.append((f"Moderate loan-to-income x{ratio:.1f}", 6, 10, _evidence(f"Requested {requested} vs income {income}/mo")))
-    else:
-        aff_pts = 2
-        reasons.append((f"Stretched loan-to-income x{ratio:.1f}", 2, 10, _evidence(f"Requested {requested} >> income {income}/mo")))
-    points += aff_pts
-
-    # employment stability 0-8
-    if b.employment_years >= 3:
-        points += 8
-        reasons.append((f"Stable employment {b.employment_years}y", 8, 8, _evidence(f"{b.employment_type}, {b.employment_years}y")))
-    elif b.employment_years >= 1:
-        points += 5
-        reasons.append((f"Moderate employment {b.employment_years}y", 5, 8, _evidence(f"{b.employment_type}, {b.employment_years}y")))
-    else:
-        points += 2
-        reasons.append((f"Unstable/short employment {b.employment_years}y", 2, 8, _evidence(f"{b.employment_type}, {b.employment_years}y")))
-
-    # document support 0-7
-    if not docs:
-        reasons.append(("No financial documents", 0, 7, _evidence("No bank_statement / salary_slip uploaded")))
-    else:
-        authentic_docs = [d for d in docs if d.authentic]
-        if len(authentic_docs) == len(docs) and len(docs) >= 2:
-            points += 7
-            reasons.append((f"{len(docs)} authentic documents", 7, 7, _evidence("All docs marked authentic")))
-        elif authentic_docs:
-            points += 4
-            reasons.append((f"{len(authentic_docs)}/{len(docs)} authentic documents", 4, 7, _evidence("Partial document authenticity")))
-        else:
-            reasons.append(("Documents failed authenticity", 0, 7, _evidence("All docs flagged non-authentic")))
-    return points, reasons
-
-
-def score_history(b: BorrowerIn):
-    """20 pts max"""
-    points = 0.0
-    reasons = []
-    if b.past_defaults > 0:
-        penalty = min(12, b.past_defaults * 6)
-        pts = max(0, 12 - penalty)
-        points += pts
-        reasons.append((f"{b.past_defaults} past default(s)", pts, 12, _evidence(f"past_defaults={b.past_defaults}")))
-    else:
-        base = min(12, 4 + b.past_loans_repaid * 2)
-        points += base
-        reasons.append((f"{b.past_loans_repaid} loans repaid, 0 defaults", base, 12, _evidence(f"repaid={b.past_loans_repaid}")))
-    if b.past_delays == 0:
-        points += 8
-        reasons.append(("No repayment delays", 8, 8, _evidence("past_delays=0")))
-    elif b.past_delays <= 2:
-        points += 5
-        reasons.append((f"{b.past_delays} delay(s)", 5, 8, _evidence(f"past_delays={b.past_delays}")))
-    else:
-        points += 1
-        reasons.append((f"{b.past_delays} delays (high)", 1, 8, _evidence(f"past_delays={b.past_delays}")))
-    return points, reasons
-
-
-def score_network(vouches: list[VouchIn]):
-    """15 pts max"""
-    if not vouches:
-        return 3.0, [("No community vouches", 3, 15, _evidence("Trust network empty — thin-file borrower"))]
-
-    avg = sum(v.trust_level for v in vouches) / len(vouches)
-    count_bonus = min(5, len(vouches) * 1.5)
-    avg_pts = (avg / 5) * 10
-    total = round(min(15, avg_pts + count_bonus), 1)
-    reasons = [
-        (
-            f"{len(vouches)} vouch(es), avg trust {avg:.1f}/5",
-            total,
-            15,
-            _evidence(", ".join(f"{v.voucher_name}({v.trust_level}/5:{v.relationship})" for v in vouches)),
-        )
-    ]
-    return total, reasons
-
-
-def score_behavioral(docs: list[DocIn], b: BorrowerIn):
-    """15 pts max"""
-    points = 10.0
-    reasons = []
-    fake_docs = [d for d in docs if not d.authentic]
-    if fake_docs:
-        points -= 6
-        reasons.append((f"{len(fake_docs)} suspect document(s)", -6, 0, _evidence(f"Flagged: {', '.join(d.file_name or d.doc_type for d in fake_docs)}")))
-    # income consistency check
-    doc_incomes = [d.extracted_income for d in docs if d.extracted_income > 0]
-    if doc_incomes and b.monthly_income > 0:
-        avg_doc = sum(doc_incomes) / len(doc_incomes)
-        drift = abs(avg_doc - b.monthly_income) / b.monthly_income
-        if drift <= 0.2:
-            points += 5
-            reasons.append(("Stated income matches documents (±20%)", 5, 5, _evidence(f"Stated {b.monthly_income} vs docs avg {avg_doc:.0f}")))
-        elif drift <= 0.5:
-            points += 2
-            reasons.append(("Income partly consistent (±50%)", 2, 5, _evidence(f"Stated {b.monthly_income} vs docs avg {avg_doc:.0f}")))
-        else:
-            points -= 2
-            reasons.append(("Income mismatch vs documents", -2, 5, _evidence(f"Stated {b.monthly_income} vs docs avg {avg_doc:.0f}, drift {drift:.0%}")))
-    else:
-        points += 1
-        reasons.append(("Insufficient data for consistency check", 1, 5, _evidence("Need stated income + extracted doc income")))
-    if not docs:
-        reasons.append(("No docs to verify behaviour", 0, 0, _evidence("Behavioural score uses base 10")))
-    else:
-        reasons.append(("Document behaviour base", 10, 10, _evidence(f"{len(docs)} docs reviewed")))
-    total = max(0, min(15, round(points, 1)))
-    return total, reasons
-
-
-def detect_fraud(b: BorrowerIn, docs: list[DocIn], vouches: list[VouchIn], requested: float, conn) -> list[dict]:
-    flags = []
-    # duplicate phone / ID
-    cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) c FROM borrowers WHERE phone=?", (b.phone,))
-    if cur.fetchone()["c"] > 0:
-        flags.append({"flag_type": "duplicate_phone", "severity": "medium", "description": f"Phone {b.phone} already exists — possible repeat application."})
-    cur.execute("SELECT COUNT(*) c FROM borrowers WHERE id_number=?", (b.id_number,))
-    if cur.fetchone()["c"] > 0:
-        flags.append({"flag_type": "duplicate_id", "severity": "high", "description": f"ID {b.id_number} already exists — verify identity."})
-    # recent velocity: loans in last count
-    cur.execute("SELECT COUNT(*) c FROM loans")
-    total_loans = cur.fetchone()["c"]
-    if b.monthly_income > 0 and requested > b.monthly_income * 10:
-        flags.append({"flag_type": "over_leverage", "severity": "high", "description": f"Requested {requested:,.0f} > 10x monthly income {b.monthly_income:,.0f}."})
-    if not re.match(r"^\d{10}$", b.phone.strip()):
-        flags.append({"flag_type": "invalid_phone", "severity": "medium", "description": "Phone number format invalid."})
-    if not re.match(r"^[A-Za-z0-9]{6,16}$", b.id_number.strip()):
-        flags.append({"flag_type": "invalid_id", "severity": "high", "description": "ID number format invalid."})
-    if any(not d.authentic for d in docs):
-        flags.append({"flag_type": "suspect_document", "severity": "high", "description": "One or more documents failed authenticity check."})
-    doc_incomes = [d.extracted_income for d in docs if d.extracted_income > 0]
-    if doc_incomes and b.monthly_income > 0:
-        avg_doc = sum(doc_incomes) / len(doc_incomes)
-        if abs(avg_doc - b.monthly_income) / b.monthly_income > 0.5:
-            flags.append({"flag_type": "income_mismatch", "severity": "medium", "description": f"Stated income {b.monthly_income:,.0f} differs >50% from docs avg {avg_doc:,.0f}."})
-    if b.past_defaults >= 2:
-        flags.append({"flag_type": "repeat_defaulter", "severity": "high", "description": f"{b.past_defaults} past defaults on record."})
-    if total_loans > 0:
-        cur.execute("SELECT COUNT(*) c FROM loans WHERE created_at > datetime('now','-1 day')")
-        if cur.fetchone()["c"] >= 10:
-            flags.append({"flag_type": "velocity_spike", "severity": "medium", "description": "Unusual application velocity in last 24h."})
-    # self-vouch
-    for v in vouches:
-        if v.voucher_name.strip().lower() == b.name.strip().lower():
-            flags.append({"flag_type": "self_vouch", "severity": "medium", "description": "Voucher name matches borrower (self-attestation)."})
-    return flags
-
-
-def decide(trust: float, fraud_flags: list[dict], requested: float, income: float, tenure: int):
-    high_sev = sum(1 for f in fraud_flags if f["severity"] == "high")
-    if high_sev >= 2 or trust < 35:
-        status = "decline"
-        risk = "High"
-    elif high_sev == 1 or trust < 60:
-        status = "conditional"
-        risk = "Medium"
-    else:
-        status = "approve"
-        risk = "Low"
-
-    # affordability cap: multiplier grows with trust
-    mult = 2 + (trust / 100) * 6  # 2x..8x monthly income
-    affordable = income * mult if income > 0 else requested * 0.5
-    recommended = round(min(requested, max(1000, affordable)), -2) if affordable >= 1000 else round(min(requested, affordable), 0)
-
-    # risk-based interest
-    if risk == "Low":
-        rate = 10 + max(0, (75 - trust)) * 0.08   # ~10-14%
-    elif risk == "Medium":
-        rate = 15 + max(0, (60 - trust)) * 0.15   # ~15-19%
-    else:
-        rate = 20 + max(0, (35 - trust)) * 0.2    # 20%+
-    rate = round(min(28, rate), 1)
-
-    emi = round((recommended * (1 + rate / 100 * tenure / 12)) / max(1, tenure), 0) if recommended else 0
-
-    terms: dict[str, Any] = {
-        "recommended_amount": recommended,
-        "interest_rate_pa": rate,
-        "tenure_months": tenure,
-        "est_monthly_emi": emi,
-        "collateral_required": risk == "High" or (risk == "Medium" and requested > 50000),
-        "guarantor_required": status == "conditional",
-        "disbursal": "full" if status == "approve" else ("tranched" if status == "conditional" else "none"),
-    }
-    if status == "decline":
-        terms["reason"] = "Trust score too low and/or multiple high-severity fraud signals."
-    elif status == "conditional":
-        terms["reason"] = "Approve partially with safeguards (lower amount, guarantor/tranches)."
-    else:
-        terms["reason"] = "Borrower meets trust and affordability criteria."
-    return status, risk, terms
 
 
 # ---------------- API ----------------
@@ -909,7 +658,9 @@ def request_otp(payload: OtpRequestIn):
         conn.commit()
     finally:
         conn.close()
-    print(f"[OTP] {phone} -> {code} (valid {OTP_TTL_MIN} min)", flush=True)
+    # OTP codes reach logs ONLY in explicit demo-debug mode — never in production.
+    if DEMO_OTP and os.environ.get("LENDSURE_LOG_CODES") == "1":
+        print(f"[OTP] {phone} -> {code} (valid {OTP_TTL_MIN} min)", flush=True)
     resp: dict[str, Any] = {"ok": True, "message": f"OTP sent to +91 {phone}", "expires_in_sec": OTP_TTL_MIN * 60}
     if DEMO_OTP:
         resp["demo_otp"] = code
@@ -967,7 +718,7 @@ def guest_login(payload: GuestIn, request: Request, response: Response):
 # is returned in the API response so the demo flow still works.
 
 EMAIL_OTP_TTL_MIN = 10
-LOGIN_LOCKS: dict[str, list] = {}  # email -> [fail_count, locked_until_ts]
+# Login-attempt throttling lives in ls_login_locks (SQLite) — see _login_lock_* helpers.
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 
 
@@ -979,7 +730,8 @@ def send_email_otp(to_email: str, code: str, purpose: str) -> bool:
     user = os.environ.get("LENDSURE_SMTP_USER", "")
     pwd = os.environ.get("LENDSURE_SMTP_APP_PASSWORD", "")
     if not user or not pwd:
-        print(f"[EMAIL-OTP] {to_email} -> {code} ({purpose}) — SMTP not configured, demo mode", flush=True)
+        if DEMO_OTP and os.environ.get("LENDSURE_LOG_CODES") == "1":
+            print(f"[EMAIL-OTP] {to_email} -> {code} ({purpose}) — SMTP not configured, demo mode", flush=True)
         return False
     try:
         import smtplib
@@ -1007,6 +759,43 @@ def _hash_password(password: str) -> str:
     salt = secrets.token_bytes(16)
     dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 600_000)
     return f"pbkdf2$600000${salt.hex()}${dk.hex()}"
+
+
+# Blocklisted passwords: the most abused choices. Checked on register + reset.
+COMMON_PASSWORDS = frozenset({
+    "password", "password1", "password123", "12345678", "123456789", "1234567890",
+    "qwerty", "qwerty123", "abc12345", "letmein", "welcome", "welcome1",
+    "monkey", "dragon", "football", "baseball", "superman", "trustno1",
+    "lendsure", "lendsure123", "admin123", "user1234", "test1234", "abcd1234",
+    "p@ssw0rd", "passw0rd", "changeme", "default", "login123", "master123",
+    "qazwsxedc", "1q2w3e4r", "aa123456", "india123", "mumbai123", "delhi123",
+    "iloveyou", "princess", "sunshine", "shadow", "654321", "87654321",
+})
+
+
+def _password_problem(password: str) -> str | None:
+    """None when acceptable, else the human-readable reason."""
+    if len(password) < 8:
+        return "Password must be at least 8 characters"
+    if not re.search(r"[A-Za-z]", password):
+        return "Password must contain at least one letter"
+    if not re.search(r"[0-9]", password):
+        return "Password must contain at least one number"
+    if password.lower() in COMMON_PASSWORDS:
+        return "That password is too common — choose a less predictable one"
+    return None
+
+
+def _unsent_code_or_503(sent: bool, code: str) -> dict:
+    """Fail-secure delivery accounting for email/SMS codes.
+
+    Delivered -> {}. Undelivered in demo mode -> echo the code (the documented
+    demo feature). Undelivered in production -> 503, never the code."""
+    if sent:
+        return {}
+    if DEMO_OTP:
+        return {"demo_otp": code}
+    raise HTTPException(503, "Verification code could not be delivered. Contact the administrator.")
 
 
 def _check_password(password: str, stored: str) -> bool:
@@ -1087,14 +876,18 @@ def register(payload: RegisterIn):
     name = payload.name.strip() or email.split("@")[0]
     if not EMAIL_RE.match(email):
         raise HTTPException(400, "Enter a valid email address")
-    if len(payload.password) < 8:
-        raise HTTPException(400, "Password must be at least 8 characters")
+    if (reason := _password_problem(payload.password)) is not None:
+        raise HTTPException(400, reason)
     if len(name) > 60:
         raise HTTPException(400, "Name too long")
     conn = db()
     try:
         if conn.execute("SELECT 1 FROM users WHERE email=?", (email,)).fetchone():
-            raise HTTPException(400, "An account with this email already exists. Try signing in.")
+            # Neutral response: identical shape whether or not the account
+            # exists, so registration never confirms an address. (In demo
+            # mode the echo below is absent here by design.)
+            return {"ok": True, "email": email, "email_sent": False,
+                    "message": "If the account is eligible, check your inbox for further instructions."}
         conn.execute(
             "INSERT INTO users (name, email, password_hash, email_verified, created_at) VALUES (?,?,?,?,?)",
             (name, email, _hash_password(payload.password), 0, _now().isoformat()))
@@ -1104,11 +897,9 @@ def register(payload: RegisterIn):
     sent = send_email_otp(email, code, "verify")
     resp: dict[str, Any] = {
         "ok": True, "email": email, "email_sent": sent,
-        "message": "Verification code sent to your email" if sent
-                   else "Email delivery not configured — use the on-screen demo code",
+        "message": "If the account is eligible, check your inbox for further instructions.",
+        **_unsent_code_or_503(sent, code),
     }
-    if not sent:
-        resp["demo_otp"] = code
     return resp
 
 
@@ -1140,8 +931,8 @@ def email_login(payload: LoginIn, request: Request, response: Response):
     """Email + Password. OTP is demanded ONLY on a new/unverified device —
     verified devices (and post-logout return visits) sign straight in."""
     email = payload.email.strip().lower()
-    lock = LOGIN_LOCKS.get(email)
-    if lock and lock[1] > time.time():
+    _, locked_until = _login_lock_get(email)
+    if locked_until > time.time():
         raise HTTPException(429, "Too many failed attempts. Try again in a few minutes.")
     conn = db()
     try:
@@ -1150,13 +941,11 @@ def email_login(payload: LoginIn, request: Request, response: Response):
     finally:
         conn.close()
     if not row or not _check_password(payload.password, row["password_hash"]):
-        fails, _ = LOGIN_LOCKS.get(email, (0, 0))
-        fails += 1
-        LOGIN_LOCKS[email] = [fails, time.time() + 900 if fails >= 5 else 0]
+        _login_lock_fail(email)
         raise HTTPException(401, "Incorrect email or password")
     if not row["email_verified"]:
         raise HTTPException(403, "Email not verified yet. Enter the code sent to your inbox.")
-    LOGIN_LOCKS.pop(email, None)
+    _login_lock_clear(email)
     conn = db()
     try:
         if not _device_verified(conn, email, request):
@@ -1172,9 +961,8 @@ def email_login(payload: LoginIn, request: Request, response: Response):
             resp: dict[str, Any] = {
                 "ok": True, "otp_required": True, "email": email, "email_sent": sent,
                 "message": "New device — enter the verification code sent to your email.",
+                **_unsent_code_or_503(sent, code),
             }
-            if not sent:
-                resp["demo_otp"] = code
             _audit_event("auth_otp_challenge", f"{row['name']} ({email})", {"reason": "new-device"})
             return resp
     finally:
@@ -1227,18 +1015,23 @@ def forgot_password(payload: ForgotIn):
         conn.close()
     sent = send_email_otp(email, code, "reset") if code else False
     # Same response whether or not the account exists (no user enumeration).
+    # A 503 here would itself be an oracle, so delivery failure stays neutral
+    # and is shouted into the server log for the operator instead.
     resp: dict[str, Any] = {"ok": True, "email_sent": sent,
                             "message": "If an account exists for this email, a reset code was sent."}
     if code and not sent:
-        resp["demo_otp"] = code
+        if DEMO_OTP:
+            resp["demo_otp"] = code
+        else:
+            print(f"[SMTP] password-reset code for {email} could NOT be delivered — SMTP unconfigured", flush=True)
     return resp
 
 
 @app.post("/api/auth/reset-password")
 def reset_password(payload: ResetIn):
     email = payload.email.strip().lower()
-    if len(payload.new_password) < 8:
-        raise HTTPException(400, "Password must be at least 8 characters")
+    if (reason := _password_problem(payload.new_password)) is not None:
+        raise HTTPException(400, reason)
     conn = db()
     try:
         _check_email_otp(conn, email, "reset", payload.otp.strip())
@@ -1253,7 +1046,7 @@ def reset_password(payload: ResetIn):
         conn.commit()
     finally:
         conn.close()
-    LOGIN_LOCKS.pop(email, None)
+    _login_lock_clear(email)
     _audit_event("auth_password_reset", email, {})
     return {"ok": True, "message": "Password updated. Please sign in again."}
 
@@ -1351,190 +1144,6 @@ def readiness():
         ok_ml = False
     ready = ok_db and has_tables and ok_ml
     return {"ready": ready, "checks": {"database": ok_db, "tables": has_tables, "ml_model": ok_ml}}
-
-
-@app.post("/api/loans/evaluate")
-def evaluate(payload: EvaluateIn, authorization: Optional[str] = Header(default=None)):
-    b = payload.borrower
-    docs = payload.documents
-    vouches = payload.vouches
-    loan = payload.loan
-    lender = _session_from_header(authorization)
-    lender_tag = f"{lender['display_name']} ({lender['phone']})" if lender else "anonymous"
-
-    conn = db()
-    try:
-        # --- scoring ---
-        id_pts, id_reasons, phone_ok, id_ok = score_identity(b)
-        fin_pts, fin_reasons = score_financial(b, docs, loan.requested_amount)
-        hist_pts, hist_reasons = score_history(b)
-        net_pts, net_reasons = score_network(vouches)
-        beh_pts, beh_reasons = score_behavioral(docs, b)
-
-        fraud_flags = detect_fraud(b, docs, vouches, loan.requested_amount, conn)
-        # fraud penalty: -5 per high, -2 per medium (floor applied later)
-        penalty = sum(5 if f["severity"] == "high" else 2 for f in fraud_flags)
-        trust = round(max(5, min(99, id_pts + fin_pts + hist_pts + net_pts + beh_pts - penalty)), 1)
-
-        status, risk, terms = decide(trust, fraud_flags, loan.requested_amount, b.monthly_income, loan.tenure_months)
-
-        # confidence from data completeness
-        completeness = sum([
-            1 if phone_ok and id_ok else 0,
-            1 if b.monthly_income > 0 else 0,
-            1 if docs else 0,
-            1 if vouches else 0,
-            1 if (b.past_loans_repaid + b.past_defaults) > 0 else 0,
-        ]) / 5
-        confidence = round(55 + completeness * 40 - (len(fraud_flags) * 2), 1)
-        confidence = max(30, min(98, confidence))
-
-        def pack(reasons, cat, weight):
-            return [{"category": cat, "factor": f, "points": p, "max_points": m, "evidence": e} for (f, p, m, e) in reasons]
-
-        breakdown = (
-            pack(id_reasons, "Identity Verification", 25)
-            + pack(fin_reasons, "Financial Stability", 25)
-            + pack(hist_reasons, "Repayment History", 20)
-            + pack(net_reasons, "Trust Network", 15)
-            + pack(beh_reasons, "Behavioural & Documents", 15)
-        )
-        if penalty:
-            breakdown.append({"category": "Fraud Adjustment", "factor": f"{len(fraud_flags)} fraud signal(s)", "points": -penalty, "max_points": 0, "evidence": "; ".join(f["description"] for f in fraud_flags)})
-
-        explanation = {
-            "trust_score": trust,
-            "risk_level": risk,
-            "decision": status,
-            "confidence": confidence,
-            "breakdown": breakdown,
-            "fraud_flags": fraud_flags,
-            "terms": terms,
-            "summary": f"Trust {trust}/100 ({risk} risk), {status}. Confidence {confidence}%. " + terms["reason"],
-        }
-
-        # --- persist ---
-        cur = conn.cursor()
-        now = datetime.utcnow().isoformat()
-        cur.execute(
-            """INSERT INTO borrowers (name, phone, id_number, address, employment_type,
-               monthly_income, employment_years, past_loans_repaid, past_defaults, past_delays, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-            (b.name, b.phone, b.id_number, b.address, b.employment_type, b.monthly_income,
-             b.employment_years, b.past_loans_repaid, b.past_defaults, b.past_delays, now),
-        )
-        borrower_id = cur.lastrowid
-        for d in docs:
-            cur.execute(
-                "INSERT INTO documents (borrower_id, doc_type, file_name, extracted_income, authentic, notes) VALUES (?,?,?,?,?,?)",
-                (borrower_id, d.doc_type, d.file_name, d.extracted_income, int(d.authentic), d.notes),
-            )
-        for v in vouches:
-            cur.execute(
-                "INSERT INTO vouches (borrower_id, voucher_name, relationship, trust_level, comment) VALUES (?,?,?,?,?)",
-                (borrower_id, v.voucher_name, v.relationship, v.trust_level, v.comment),
-            )
-        cur.execute(
-            """INSERT INTO loans (borrower_id, requested_amount, tenure_months, purpose, status,
-               recommended_amount, interest_rate, risk_level, trust_score, confidence, explanation_json, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (borrower_id, loan.requested_amount, loan.tenure_months, loan.purpose, status,
-             terms["recommended_amount"], terms["interest_rate_pa"], risk, trust, confidence,
-             json.dumps(explanation), now),
-        )
-        loan_id = cur.lastrowid
-        for f in fraud_flags:
-            cur.execute(
-                "INSERT INTO fraud_flags (borrower_id, loan_id, flag_type, severity, description) VALUES (?,?,?,?,?)",
-                (borrower_id, loan_id, f["flag_type"], f["severity"], f["description"]),
-            )
-        cur.execute(
-            "INSERT INTO audit_logs (loan_id, action, detail, created_at) VALUES (?,?,?,?)",
-            (loan_id, "evaluate", json.dumps({"trust": trust, "risk": risk, "decision": status, "penalty": penalty, "lender": lender_tag}), now),
-        )
-        conn.commit()
-        return {"loan_id": loan_id, "borrower_id": borrower_id, **explanation}
-    finally:
-        conn.close()
-
-
-@app.get("/api/loans")
-def list_loans(limit: int = 50):
-    conn = db()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            """SELECT l.*, b.name borrower_name, b.phone FROM loans l
-               JOIN borrowers b ON b.id = l.borrower_id ORDER BY l.id DESC LIMIT ?""",
-            (limit,),
-        )
-        return [dict(r) for r in cur.fetchall()]
-    finally:
-        conn.close()
-
-
-@app.get("/api/loans/{loan_id}")
-def loan_detail(loan_id: int):
-    conn = db()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            """SELECT l.*, b.name borrower_name, b.phone, b.id_number, b.address,
-                      b.employment_type, b.monthly_income, b.employment_years
-               FROM loans l JOIN borrowers b ON b.id=l.borrower_id WHERE l.id=?""",
-            (loan_id,),
-        )
-        row = cur.fetchone()
-        if not row:
-            raise HTTPException(404, "Loan not found")
-        out = dict(row)
-        out["explanation"] = json.loads(out["explanation_json"])
-        cur.execute("SELECT * FROM fraud_flags WHERE loan_id=?", (loan_id,))
-        out["fraud_flags_detail"] = [dict(r) for r in cur.fetchall()]
-        cur.execute("SELECT * FROM audit_logs WHERE loan_id=? ORDER BY id", (loan_id,))
-        out["audit"] = [dict(r) for r in cur.fetchall()]
-        cur.execute("SELECT * FROM vouches WHERE borrower_id=?", (out["borrower_id"],))
-        out["vouches"] = [dict(r) for r in cur.fetchall()]
-        cur.execute("SELECT * FROM documents WHERE borrower_id=?", (out["borrower_id"],))
-        out["documents"] = [dict(r) for r in cur.fetchall()]
-        return out
-    finally:
-        conn.close()
-
-
-@app.get("/api/dashboard/stats")
-def stats():
-    conn = db()
-    try:
-        cur = conn.cursor()
-        total = cur.execute("SELECT COUNT(*) c FROM loans").fetchone()["c"]
-        avg_trust = cur.execute("SELECT COALESCE(AVG(trust_score),0) v FROM loans").fetchone()["v"]
-        appr = cur.execute("SELECT COUNT(*) c FROM loans WHERE status='approve'").fetchone()["c"]
-        cond = cur.execute("SELECT COUNT(*) c FROM loans WHERE status='conditional'").fetchone()["c"]
-        decl = cur.execute("SELECT COUNT(*) c FROM loans WHERE status='decline'").fetchone()["c"]
-        flags = cur.execute("SELECT COUNT(*) c FROM fraud_flags").fetchone()["c"]
-        return {
-            "total_evaluations": total,
-            "avg_trust": round(avg_trust or 0, 1),
-            "approve": appr, "conditional": cond, "decline": decl,
-            "fraud_flags": flags,
-        }
-    finally:
-        conn.close()
-
-
-@app.get("/api/borrowers/search")
-def search_borrowers(q: str = "", limit: int = 20):
-    conn = db()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT * FROM borrowers WHERE name LIKE ? OR phone LIKE ? OR id_number LIKE ? ORDER BY id DESC LIMIT ?",
-            (f"%{q}%", f"%{q}%", f"%{q}%", limit),
-        )
-        return [dict(r) for r in cur.fetchall()]
-    finally:
-        conn.close()
 
 
 # ---------------- Frontend ----------------

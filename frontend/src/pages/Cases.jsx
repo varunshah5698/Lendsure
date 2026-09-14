@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, Fragment } from "react";
 import { useAuth, guardLender, isGuest } from "../context/AuthContext";
 import { useToast } from "../components/ui/Toast";
 import { cases, officers } from "../lib/api";
+import { formatDate } from "../lib/dates";
 import PageHeader from "../components/layout/PageHeader";
 import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
@@ -165,7 +166,7 @@ export default function Cases() {
                             : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{c.city || "—"}</span>}
                       </td>
                       <td><Badge variant={c.status === "OPEN" ? "MEDIUM" : "APPROVE"}>{c.status}</Badge></td>
-                      <td style={{ fontSize: 12, color: "var(--text-muted)" }}>{(c.created_at || "").slice(0, 16).replace("T", " ")} · {c.created_by}</td>
+                      <td style={{ fontSize: 12, color: "var(--text-muted)" }}>{formatDate(c.created_at)} · {c.created_by}</td>
                       <td style={{ whiteSpace: "nowrap" }}>
                         {c.status === "OPEN" && !guest && (
                           <>
@@ -191,7 +192,7 @@ export default function Cases() {
                           {history.length ? history.map((t) => (
                             <div key={t.id} style={{ padding: "4px 0" }}>
                               <b>{t.status}</b> · {t.from_city || "?"} → <b>{t.to_city}</b> · requested by {t.requested_by}
-                              {t.decided_by ? ` · decided by ${t.decided_by}` : ""} · {(t.created_at || "").slice(0, 16).replace("T", " ")}
+                              {t.decided_by ? ` · decided by ${t.decided_by}` : ""} · {formatDate(t.created_at)}
                               {t.note ? <div style={{ color: "var(--text-muted)" }}>{t.note}</div> : null}
                             </div>
                           )) : <span style={{ color: "var(--text-muted)" }}>No transfers recorded for this case.</span>}
@@ -244,7 +245,7 @@ export default function Cases() {
                 <div>
                   <b>Case #{t.case_id}</b> {t.case_title ? `· ${t.case_title}` : ""}<br />
                   <small style={{ color: "var(--text-muted)" }}>
-                    {t.from_city || "?"} → <b>{t.to_city}</b> · requested by {t.requested_by} · {(t.created_at || "").slice(0, 16).replace("T", " ")}
+                    {t.from_city || "?"} → <b>{t.to_city}</b> · requested by {t.requested_by} · {formatDate(t.created_at)}
                     {t.note ? ` · ${t.note}` : ""}
                   </small>
                 </div>

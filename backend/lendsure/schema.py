@@ -296,20 +296,49 @@ CREATE INDEX IF NOT EXISTS idx_gn_g ON ls_grievance_notes (grievance_id);
 """
 
 # Column migrations for existing tables (each applied once, failures ignored).
+# Column migrations. Each entry is (name, sql) — applied once via the
+# ls_migrations ledger in app.init_db (own transaction, rollback on failure).
 LS_MIGRATIONS = [
-    "ALTER TABLE ls_borrowers ADD COLUMN phone TEXT DEFAULT ''",
-    "ALTER TABLE ls_borrowers ADD COLUMN email TEXT DEFAULT ''",
-    "ALTER TABLE ls_borrowers ADD COLUMN address_line TEXT DEFAULT ''",
-    "ALTER TABLE ls_borrowers ADD COLUMN device_id TEXT DEFAULT ''",
-    "ALTER TABLE ls_borrowers ADD COLUMN bank_account TEXT DEFAULT ''",
-    "ALTER TABLE ls_documents ADD COLUMN pipeline_status TEXT DEFAULT 'PENDING'",
-    "ALTER TABLE ls_documents ADD COLUMN pipeline_evidence TEXT DEFAULT '[]'",
-    "ALTER TABLE ls_documents ADD COLUMN ocr_status TEXT DEFAULT 'NOT_AVAILABLE'",
-    "ALTER TABLE ls_documents ADD COLUMN scan_status TEXT DEFAULT 'NOT_AVAILABLE'",
-    "ALTER TABLE ls_documents ADD COLUMN content_hash TEXT DEFAULT ''",
-    "ALTER TABLE ls_cases ADD COLUMN assigned_to TEXT DEFAULT ''",
-    "ALTER TABLE ls_cases ADD COLUMN city TEXT DEFAULT ''",
-    "ALTER TABLE ls_cases ADD COLUMN transfer_status TEXT DEFAULT 'NONE'",
+    ("borrowers.phone", "ALTER TABLE ls_borrowers ADD COLUMN phone TEXT DEFAULT ''"),
+    ("borrowers.email", "ALTER TABLE ls_borrowers ADD COLUMN email TEXT DEFAULT ''"),
+    ("borrowers.address_line", "ALTER TABLE ls_borrowers ADD COLUMN address_line TEXT DEFAULT ''"),
+    ("borrowers.device_id", "ALTER TABLE ls_borrowers ADD COLUMN device_id TEXT DEFAULT ''"),
+    ("borrowers.bank_account", "ALTER TABLE ls_borrowers ADD COLUMN bank_account TEXT DEFAULT ''"),
+    ("documents.pipeline_status", "ALTER TABLE ls_documents ADD COLUMN pipeline_status TEXT DEFAULT 'PENDING'"),
+    ("documents.pipeline_evidence", "ALTER TABLE ls_documents ADD COLUMN pipeline_evidence TEXT DEFAULT '[]'"),
+    ("documents.ocr_status", "ALTER TABLE ls_documents ADD COLUMN ocr_status TEXT DEFAULT 'NOT_AVAILABLE'"),
+    ("documents.scan_status", "ALTER TABLE ls_documents ADD COLUMN scan_status TEXT DEFAULT 'NOT_AVAILABLE'"),
+    ("documents.content_hash", "ALTER TABLE ls_documents ADD COLUMN content_hash TEXT DEFAULT ''"),
+    ("cases.assigned_to", "ALTER TABLE ls_cases ADD COLUMN assigned_to TEXT DEFAULT ''"),
+    ("cases.city", "ALTER TABLE ls_cases ADD COLUMN city TEXT DEFAULT ''"),
+    ("cases.transfer_status", "ALTER TABLE ls_cases ADD COLUMN transfer_status TEXT DEFAULT 'NONE'"),
+    ("analyses.risk_json_cols",
+     "ALTER TABLE ls_analyses ADD COLUMN risk_factors TEXT DEFAULT '[]';"
+     "ALTER TABLE ls_analyses ADD COLUMN fraud_signals TEXT DEFAULT '[]';"
+     "ALTER TABLE ls_analyses ADD COLUMN trust_factors TEXT DEFAULT '[]';"
+     "ALTER TABLE ls_analyses ADD COLUMN ml_score TEXT DEFAULT '[]'"),
+    # Retired v1 tables (confirmed empty, never populated by the ls_* engine).
+    ("drop-legacy-v1-tables",
+     "DROP TABLE IF EXISTS borrowers;DROP TABLE IF EXISTS documents;DROP TABLE IF EXISTS vouches;"
+     "DROP TABLE IF EXISTS loans;DROP TABLE IF EXISTS fraud_flags;DROP TABLE IF EXISTS audit_logs"),
+    ("sessions.auth_columns",
+     "ALTER TABLE sessions ADD COLUMN email TEXT DEFAULT '';"),
+    ("sessions.last_active", "ALTER TABLE sessions ADD COLUMN last_active TEXT"),
+    ("sessions.ip", "ALTER TABLE sessions ADD COLUMN ip TEXT DEFAULT ''"),
+    ("sessions.ua_hash", "ALTER TABLE sessions ADD COLUMN ua_hash TEXT DEFAULT ''"),
+    ("sessions.device_hash", "ALTER TABLE sessions ADD COLUMN device_hash TEXT DEFAULT ''"),
+    ("devices.table",
+     "CREATE TABLE IF NOT EXISTS ls_devices (email TEXT NOT NULL, device_hash TEXT NOT NULL,"
+     " verified INTEGER DEFAULT 0, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL,"
+     " PRIMARY KEY (email, device_hash))"),
+    ("audit.chain_columns",
+     "ALTER TABLE ls_audit ADD COLUMN prev_hash TEXT DEFAULT '';"),
+    ("audit.chain_hash_col",
+     "ALTER TABLE ls_audit ADD COLUMN chain_hash TEXT DEFAULT '';"),
+    ("api_keys.expiry_scopes",
+     "ALTER TABLE ls_api_keys ADD COLUMN expires_at TEXT DEFAULT '';"
+     "ALTER TABLE ls_api_keys ADD COLUMN scopes TEXT DEFAULT 'read';"
+     "UPDATE ls_api_keys SET scopes='admin' WHERE scopes='read';"),
 ]
 
 DEFAULT_CONFIG = {

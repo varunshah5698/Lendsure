@@ -88,6 +88,7 @@ export default function CommandPalette() {
       <div className="cmd-box" onClick={(e) => e.stopPropagation()}>
         <input
           ref={inputRef}
+          aria-label="Command palette: type a page, action, or borrower ID"
           value={q}
           onChange={(e) => { setQ(e.target.value); setSel(0); }}
           onKeyDown={(e) => {

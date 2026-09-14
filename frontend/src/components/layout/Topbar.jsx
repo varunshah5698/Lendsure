@@ -68,6 +68,7 @@ export default function Topbar({ searchQuery, onSearchChange }) {
           <input
             type="text"
             placeholder="Search borrowers, IDs…"
+            aria-label="Search borrowers and IDs"
             value={searchQuery || ""}
             onChange={(e) => handleSearch(e.target.value)}
             className="topbar-search-input"

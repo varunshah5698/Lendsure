@@ -271,6 +271,9 @@ def create_request(body: RequestIn, authorization: Optional[str] = Header(defaul
                                (body.idempotency_key,)).fetchone()
             if row:
                 return {**dict(row), "duplicate": True}
+        # Server-minted when the client omits one: persisted + returned so a
+        # retry can reuse it instead of minting a duplicate request.
+        idem = body.idempotency_key or f"req-{uuid.uuid4().hex[:16]}"
         aid = body.analysis_id
         if aid is None:
             r = conn.execute("SELECT id FROM ls_analyses WHERE borrower_id=? ORDER BY id DESC LIMIT 1",
@@ -293,7 +296,7 @@ def create_request(body: RequestIn, authorization: Optional[str] = Header(defaul
             "purpose,status,idempotency_key,requested_by,created_at,updated_at)"
             " VALUES (?,?,?,?,?,?,'DRAFT',?,?,?,?)",
             (body.borrower_id, aid, body.amount, body.interest_rate, body.duration_months,
-             body.purpose, body.idempotency_key, _actor(authorization, x_api_key), now(), now()))
+             body.purpose, idem, _actor(authorization, x_api_key), now(), now()))
         rid = cur.lastrowid
         emit(conn, "LoanRequestCreated", "loan_request", rid, _actor(authorization, x_api_key),
              {"borrower_id": body.borrower_id, "amount": body.amount})

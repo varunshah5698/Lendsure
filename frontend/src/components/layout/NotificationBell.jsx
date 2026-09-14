@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { notify } from "../../lib/api";
+import { formatDate } from "../../lib/dates";
 import Icon from "../ui/Icon";
 import "./NotificationBell.css";
 
@@ -125,7 +126,7 @@ export default function NotificationBell() {
                 onClick={async () => { if (!n.is_read) { try { await notify.markRead(n.id, session.token); } catch {} } setOpen(false); }}>
                 <div className="notif-title">{n.title}</div>
                 {n.body && <div className="notif-body">{n.body}</div>}
-                <div className="notif-time">{(n.created_at || "").slice(0, 16).replace("T", " ")}</div>
+                <div className="notif-time">{formatDate(n.created_at)}</div>
               </Link>
             ))}
           </div>

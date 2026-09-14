@@ -1,7 +1,7 @@
 # LendSure — single-container production image.
 # Stage 1 builds the React frontend; stage 2 serves API + static via uvicorn.
-# The seeded SQLite DB (backend/lending.db) and ML model ship inside the
-# image, so a fresh deploy works with zero manual steps.
+# The tracked seed DB (backend/seed/lending.db) + ML model ship inside the
+# image; the live DB is created from the seed at boot and never committed.
 
 # ---------- Stage 1: frontend ----------
 FROM node:20-slim AS web

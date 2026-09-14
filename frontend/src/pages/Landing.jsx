@@ -354,7 +354,7 @@ function DashboardPreview() {
       setMetrics([
         `${d.borrowers.toLocaleString()} Borrowers`,
         `${d.avg_trust} Avg Trust`,
-        `ROC-AUC ${m.roc_auc.toFixed(2)}`,
+        `PR-AUC ${m.pr_auc.toFixed(2)}`,
         `${m.n_features} Live Features`,
       ]);
     });
@@ -375,7 +375,7 @@ function DashboardPreview() {
         </div>
         <div className="lp-dashboard-placeholder">
           <div className="lp-dash-metrics">
-            {(metrics || ["Live Borrowers", "Live Trust Scores", "Live ROC-AUC", "Live Features"]).map((m) => (
+            {(metrics || ["Live Borrowers", "Live Trust Scores", "Live PR-AUC", "Live Features"]).map((m) => (
               <div key={m} className="lp-dash-metric">{m}</div>
             ))}
           </div>

@@ -11,6 +11,7 @@ const BAND_COLOR = { Low: "var(--success)", Medium: "#b7791f", High: "var(--warn
  *  Renders nothing at all if the model artifacts are not installed. */
 export default function CreditRiskPanel({ borrowerId, token }) {
   const [data, setData] = useState(null);
+  const [stats, setStats] = useState(null);
   const [missing, setMissing] = useState(false);
 
   useEffect(() => {
@@ -18,6 +19,9 @@ export default function CreditRiskPanel({ borrowerId, token }) {
     mlCredit.predict(borrowerId, token)
       .then((d) => { if (live) setData(d); })
       .catch((e) => { if (live && /503|not installed/i.test(e.message)) setMissing(true); });
+    mlCredit.model(token)
+      .then((m) => { if (live) setStats(m.test_real_metrics || null); })
+      .catch(() => {});
     return () => { live = false; };
   }, [borrowerId, token]);
 
@@ -63,6 +67,10 @@ export default function CreditRiskPanel({ borrowerId, token }) {
             ))}
           </div>
         )}
+        <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 12 }}>
+          Demo model; tuned to catch potential defaults, so some flags will be incorrect.
+          {stats ? ` Measured precision ${(stats.precision * 100).toFixed(0)}% · recall ${(stats.recall * 100).toFixed(0)}% · PR-AUC ${stats.pr_auc?.toFixed(2)} on ${stats.n?.toLocaleString()} real borrowers.` : ""}
+        </p>
       </CardContent>
     </Card>
   );

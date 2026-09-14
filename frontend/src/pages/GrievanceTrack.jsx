@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { grievances } from "../lib/api";
+import { formatDate } from "../lib/dates";
 import Logo from "../components/ui/Logo";
 import Button from "../components/ui/Button";
 import Card, { CardHeader, CardTitle, CardDescription, CardContent } from "../components/ui/Card";
@@ -58,7 +59,7 @@ export default function GrievanceTrack() {
           <Card style={{ marginTop: 16 }}>
             <CardHeader>
               <CardTitle>{data.ticket_id} · {data.subject}</CardTitle>
-              <CardDescription>{data.category.replace(/_/g, " ")} · filed {(data.created_at || "").slice(0, 16).replace("T", " ")}</CardDescription>
+              <CardDescription>{data.category.replace(/_/g, " ")} · filed {formatDate(data.created_at)}</CardDescription>
             </CardHeader>
             <CardContent>
               <div style={{ marginBottom: 8 }}><Badge variant={data.status === "OPEN" ? "MEDIUM" : data.status === "RESOLVED" || data.status === "CLOSED" ? "APPROVE" : "MANUAL_REVIEW"}>{data.status.replace(/_/g, " ")}</Badge></div>
@@ -80,7 +81,7 @@ export default function GrievanceTrack() {
                 {(data.notes || []).map((n) => (
                   <div key={n.id} style={{ fontSize: 13, padding: "6px 0", borderBottom: "1px solid var(--border-light)" }}>
                     <div>{n.note}</div>
-                    <small style={{ color: "var(--text-muted)" }}>{(n.created_at || "").slice(0, 16).replace("T", " ")}</small>
+                    <small style={{ color: "var(--text-muted)" }}>{formatDate(n.created_at)}</small>
                   </div>
                 ))}
               </div>

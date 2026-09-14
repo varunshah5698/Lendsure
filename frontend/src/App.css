@@ -39,3 +39,15 @@
   .app-main-collapsed { margin-left: 0; }
   .app-content { padding: 16px; }
 }
+
+/* ---------- print: borrower intelligence on paper ---------- */
+@media print {
+  .sidebar, .topbar, .app-layout .cmd-overlay, .scroll-top,
+  .bd-actions, .page-header-actions, .modal-overlay, .toast-wrap {
+    display: none !important;
+  }
+  .app-main { margin-left: 0 !important; }
+  .app-content { max-width: none; padding: 0; }
+  .card, .metric-card { box-shadow: none !important; break-inside: avoid; }
+  body { background: #fff; font-size: 12px; }
+}

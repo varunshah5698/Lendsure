@@ -22,7 +22,7 @@ export default function FloatingCards() {
           { label: "MODEL", value: m.model_id.replace("lendsure-credit-v", "v"), sub: "Gradient boosting", color: "var(--primary)" },
           { label: "FEATURES ANALYZED", value: String(m.n_features), sub: "Behavioral + financial", color: "var(--primary)" },
           { label: "TRAINING ROWS", value: rows, sub: "Real + synthetic borrowers", color: "var(--success)" },
-          { label: "HOLDOUT ROC-AUC", value: m.roc_auc.toFixed(2), sub: `${m.test_rows.toLocaleString()} real borrowers`, color: "var(--success)" },
+          { label: "HOLDOUT PR-AUC", value: m.pr_auc.toFixed(2), sub: `${m.test_rows.toLocaleString()} real borrowers`, color: "var(--success)" },
           { label: "DECISION", value: "EXPLAINED", sub: "Every score has reasons", color: "var(--primary)" },
         ]);
       })

@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { useAuth, guardLender } from "../context/AuthContext";
 import { useToast } from "../components/ui/Toast";
 import { grievances, officers } from "../lib/api";
+import { formatDate } from "../lib/dates";
 import PageHeader from "../components/layout/PageHeader";
 import Card, { CardHeader, CardTitle, CardDescription, CardContent } from "../components/ui/Card";
 import Button from "../components/ui/Button";
@@ -66,12 +67,12 @@ export default function GrievanceDetail() {
     <div>
       <PageHeader
         title={`${data.ticket_id} · ${data.subject}`}
-        description={`${data.name} · ${data.phone}${data.borrower_id ? ` · borrower ${data.borrower_id}` : ""} · ${data.category.replace(/_/g, " ")} · filed ${(data.created_at || "").slice(0, 16).replace("T", " ")}`}
+        description={`${data.name} · ${data.phone}${data.borrower_id ? ` · borrower ${data.borrower_id}` : ""} · ${data.category.replace(/_/g, " ")} · filed ${formatDate(data.created_at)}`}
         actions={<Badge variant={data.status === "OPEN" ? "MEDIUM" : closed ? "APPROVE" : "MANUAL_REVIEW"}>{data.status.replace(/_/g, " ")}</Badge>}
       />
       <Card style={{ marginBottom: 16 }}>
         <CardHeader><CardTitle>Complaint</CardTitle>
-          <CardDescription>Assigned to {data.assigned_to || "nobody yet"}{data.resolved_at ? ` · resolved ${(data.resolved_at || "").slice(0, 16).replace("T", " ")}` : ""}</CardDescription></CardHeader>
+          <CardDescription>Assigned to {data.assigned_to || "nobody yet"}{data.resolved_at ? ` · resolved ${formatDate(data.resolved_at)}` : ""}</CardDescription></CardHeader>
         <CardContent>
           <p style={{ fontSize: 14, whiteSpace: "pre-wrap" }}>{data.description || "No description provided."}</p>
           <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
@@ -96,7 +97,7 @@ export default function GrievanceDetail() {
         <CardContent>
           {(data.notes || []).map((n) => (
             <div key={n.id} className="audit-row">
-              <div>{n.note}<br /><small style={{ color: "var(--text-muted)" }}>{n.actor} · {(n.created_at || "").slice(0, 16).replace("T", " ")}</small></div>
+              <div>{n.note}<br /><small style={{ color: "var(--text-muted)" }}>{n.actor} · {formatDate(n.created_at)}</small></div>
             </div>
           ))}
           {!closed && (

@@ -74,10 +74,9 @@ def _clone_borrower(conn, template_bid: str, tag: str, tweaks: dict | None = Non
                      "transactions,bounced,disputed) VALUES (?,?,?,?,?,?,?,?,?)",
                      (bid, f["month"], f["label"], f["income"], f["expenses"], f["debt"],
                       f["transactions"], f["bounced"], f["disputed"]))
-    conn.execute("INSERT INTO ls_audit (borrower_id,analysis_id,actor,action,detail,created_at)"
-                 " VALUES (?,?,?,?,?,?)",
-                 (bid, None, "simulator", "simulation_created",
-                  json.dumps({"template": template_bid, "scenario": tag}), now()))
+    from .notify import audit as _audit_log
+    _audit_log(conn, bid, None, "simulator", "simulation_created",
+               {"template": template_bid, "scenario": tag})
     return bid
 
 

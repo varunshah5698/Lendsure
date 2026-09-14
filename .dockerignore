@@ -1,6 +1,8 @@
-# Keep the image lean. NOTE: backend/lending.db and backend/models/ are
-# deliberately NOT ignored — the seeded demo DB + ML model ship in the image.
+# Keep the image working: the TRACKED seed DB + ML models ship in the image.
+# The live database (backend/lending.db) is git-ignored and seeded at boot.
+# Local backups never ship.
 node_modules/
+backend/backups/
 frontend/node_modules/
 frontend/dist/
 __pycache__/

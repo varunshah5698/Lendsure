@@ -9,6 +9,7 @@ from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from .engines import RecommendationEngine, emi, full_analysis
+from .notify import audit as _audit_log
 from .schema import DEFAULT_CONFIG
 
 router = APIRouter(prefix="/api/ls", tags=["lendsure"])
@@ -123,30 +124,77 @@ ROLE_PERMS = {
 
 
 def role_of(authorization: Optional[str], x_api_key: Optional[str] = None) -> str:
-    if x_api_key:
-        import hashlib
-        h = hashlib.sha256(x_api_key.encode()).hexdigest()
-        conn = _DB()
-        try:
-            if conn.execute("SELECT 1 FROM ls_api_keys WHERE key_hash=? AND revoked=0", (h,)).fetchone():
-                return "service"
-        finally:
-            conn.close()
+    if x_api_key and _api_key_row(x_api_key) is not None:
+        return "service"
     s = _RESOLVE(authorization) if authorization else None
     if s:
         return s.get("role") or "guest"
     return "guest"
 
 
+def _api_key_row(x_api_key: str | None):
+    """Valid, unrevoked, unexpired key row — else None. Expiry is enforced
+    here so every caller (role_of, require_perm) honors it identically."""
+    if not x_api_key:
+        return None
+    import hashlib
+    from datetime import datetime
+    h = hashlib.sha256(x_api_key.encode()).hexdigest()
+    conn = _DB()
+    try:
+        row = conn.execute("SELECT * FROM ls_api_keys WHERE key_hash=? AND revoked=0", (h,)).fetchone()
+        if not row:
+            return None
+        row = dict(row)
+        if row.get("expires_at") and row["expires_at"] <= datetime.utcnow().isoformat():
+            return None
+        return row
+    finally:
+        conn.close()
+
+
+_ALL_PERMS = {p for perms in ROLE_PERMS.values() for p in perms}
+SCOPE_PERMS = {
+    "read": {p for p in _ALL_PERMS if p.endswith(".read")},
+    "write": {p for p in _ALL_PERMS if p.endswith(".read")}
+             | {"borrower.create", "analysis.run", "simulation.run", "copilot.ask",
+                "documents.write", "loan_request.create", "loan_request.decide",
+                "repayment.record", "cases.manage", "review.decide", "grievance.manage"},
+    "admin": _ALL_PERMS,
+}
+VALID_SCOPES = ("read", "write", "admin")
+
+
 def require_perm(authorization: Optional[str], x_api_key: Optional[str], *perms: str) -> str:
+    key = _api_key_row(x_api_key)
+    if key is not None:
+        allowed: set = set()
+        for s in (key.get("scopes") or "read").split(","):
+            allowed |= SCOPE_PERMS.get(s.strip(), set())
+        if not all(p in allowed for p in perms):
+            raise HTTPException(403, f"API key scopes ({key.get('scopes') or 'read'}) do not cover: {', '.join(perms)}")
+        return "service"
     role = role_of(authorization, x_api_key)
     if not any(p in ROLE_PERMS.get(role, set()) for p in perms):
         raise HTTPException(403, f"Insufficient permissions for role '{role}' (needs: {', '.join(perms)})")
     return role
 
 
+# Guests see the product, never the person. These borrower columns stay
+# server-side for role == "guest" (applied to lists AND detail views).
+GUEST_HIDDEN_BORROWER_FIELDS = {"phone", "email", "address_line", "bank_account", "device_id"}
+
+
+def _scrub_borrower(b: dict, role: str) -> dict:
+    if role != "guest":
+        return b
+    return {k: v for k, v in b.items() if k not in GUEST_HIDDEN_BORROWER_FIELDS}
+
+
 class ApiKeyIn(BaseModel):
     name: str = Field(min_length=2, max_length=60)
+    expires_days: int = Field(default=90, ge=1, le=365)
+    scopes: str = "read"
 
 
 @router.get("/admin/keys")
@@ -154,10 +202,17 @@ def list_keys(authorization: str | None = Header(default=None), x_api_key: str |
     # Key metadata (prefix, never the secret) is readable with admin.read;
     # creating/revoking still requires keys.manage.
     require_perm(authorization, x_api_key, "keys.manage", "admin.read")
+    from datetime import datetime
     conn = _DB()
     try:
-        return [dict(r) for r in conn.execute(
-            "SELECT id, prefix, name, created_at, last_used, revoked FROM ls_api_keys ORDER BY id DESC")]
+        rows = []
+        for r in conn.execute(
+                "SELECT id, prefix, name, created_at, last_used, revoked, expires_at, scopes"
+                " FROM ls_api_keys ORDER BY id DESC"):
+            r = dict(r)
+            r["expired"] = bool(r.get("expires_at") and r["expires_at"] <= datetime.utcnow().isoformat())
+            rows.append(r)
+        return rows
     finally:
         conn.close()
 
@@ -165,17 +220,23 @@ def list_keys(authorization: str | None = Header(default=None), x_api_key: str |
 @router.post("/admin/keys")
 def create_key(item: ApiKeyIn, authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
     require_perm(authorization, x_api_key, "keys.manage")
+    scopes = sorted({s.strip() for s in (item.scopes or "").split(",") if s.strip()})
+    if not scopes or any(s not in VALID_SCOPES for s in scopes):
+        raise HTTPException(400, f"scopes must be a comma list of: {', '.join(VALID_SCOPES)}")
     import hashlib
     import secrets
+    from datetime import datetime, timedelta
     raw = "ls_" + secrets.token_urlsafe(32)
     h = hashlib.sha256(raw.encode()).hexdigest()
+    expires_at = (datetime.utcnow() + timedelta(days=item.expires_days)).isoformat()
     conn = _DB()
     try:
         cur = conn.cursor()
-        cur.execute("INSERT INTO ls_api_keys (key_hash, prefix, name, created_at, revoked) VALUES (?,?,?,?,0)",
-                    (h, raw[:10] + "…", item.name.strip(), now()))
+        cur.execute("INSERT INTO ls_api_keys (key_hash, prefix, name, created_at, revoked, expires_at, scopes)"
+                    " VALUES (?,?,?,?,0,?,?)",
+                    (h, raw[:10] + "…", item.name.strip(), now(), expires_at, ",".join(scopes)))
         conn.commit()
-        return {"id": cur.lastrowid, "key": raw,
+        return {"id": cur.lastrowid, "key": raw, "expires_at": expires_at, "scopes": ",".join(scopes),
                 "warning": "Copy now — the full key is never stored and cannot be shown again."}
     finally:
         conn.close()
@@ -315,13 +376,13 @@ def list_borrowers(q: str = "", risk: str = "all", verification: str = "all",
 
 @router.get("/borrowers/{bid}")
 def get_borrower(bid: str, authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
-    require_perm(authorization, x_api_key, "borrower.read")
+    role = require_perm(authorization, x_api_key, "borrower.read")
     conn = _DB()
     try:
         b = conn.execute("SELECT * FROM ls_borrowers WHERE borrower_id=?", (bid,)).fetchone()
         if not b:
             raise HTTPException(404, "Borrower not found")
-        b = dict(b)
+        b = _scrub_borrower(dict(b), role)
         docs = [dict(r) for r in conn.execute("SELECT * FROM ls_documents WHERE borrower_id=?", (bid,))]
         b["verification_bucket"] = verification_bucket(b, docs)
         b["documents"] = docs
@@ -371,10 +432,9 @@ def _persist_analysis(conn, bid: str, res: dict, actor: str) -> int:
     for e in res["evidence"]:
         cur.execute("INSERT INTO ls_evidence (analysis_id, category, label, value, sort) VALUES (?,?,?,?,?)",
                     (aid, e["category"], e["label"], e["value"], e["sort"]))
-    cur.execute("INSERT INTO ls_audit (borrower_id, analysis_id, actor, action, detail, created_at) VALUES (?,?,?,?,?,?)",
-                (bid, aid, actor, "analysis_completed",
-                 json.dumps({"risk": r["risk_level"], "fraud": fr["fraud_risk"], "trust": t["trust_score"],
-                             "decision": rec["decision"], "model": DEFAULT_CONFIG["model_version"]}), ts))
+    _audit_log(conn, bid, aid, actor, "analysis_completed",
+               {"risk": r["risk_level"], "fraud": fr["fraud_risk"], "trust": t["trust_score"],
+                "decision": rec["decision"], "model": DEFAULT_CONFIG["model_version"]})
     conn.commit()
     return aid
 
@@ -446,10 +506,14 @@ def _latest_full(conn, bid: str) -> dict:
 
 @router.get("/borrowers/{bid}/analysis")
 def get_analysis(bid: str, authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
-    require_perm(authorization, x_api_key, "analysis.read")
+    role = require_perm(authorization, x_api_key, "analysis.read")
     conn = _DB()
     try:
-        return _latest_full(conn, bid)
+        out = _latest_full(conn, bid)
+        if role == "guest":
+            # The stored input snapshot is the raw borrower row (incl. PII).
+            out.pop("input_snapshot", None)
+        return out
     finally:
         conn.close()
 
@@ -509,10 +573,9 @@ def simulate(sim: SimulateIn, authorization: str | None = Header(default=None), 
                                        amount=sim.amount, rate=sim.interest_rate, duration=sim.duration_months)
         pay = emi(sim.amount, sim.interest_rate, sim.duration_months)
         inc = b["avg_income_6m"] or 1
-        conn.execute("INSERT INTO ls_audit (borrower_id, analysis_id, actor, action, detail, created_at) VALUES (?,?,?,?,?,?)",
-                     (sim.borrower_id, None, actor_of(authorization, x_api_key), "simulation",
-                      json.dumps({"amount": sim.amount, "rate": sim.interest_rate, "duration": sim.duration_months,
-                                  "decision": rec["decision"]}), now()))
+        _audit_log(conn, sim.borrower_id, None, actor_of(authorization, x_api_key), "simulation",
+                     {"amount": sim.amount, "rate": sim.interest_rate, "duration": sim.duration_months,
+                      "decision": rec["decision"]})
         conn.commit()
         return {**rec, "monthly_payment": pay, "total_repayment": round(pay * sim.duration_months, 2),
                 "base_risk": res["risk"]["risk_level"], "base_trust": res["trust"]["trust_score"]}
@@ -571,9 +634,8 @@ def add_document(bid: str, doc: DocIn, authorization: str | None = Header(defaul
                     " VALUES (?,?,?,?,?,?,?)",
                     (bid, doc.doc_type, doc.file_name, doc.status, doc.quality_score, doc.note, now()))
         did = cur.lastrowid
-        cur.execute("INSERT INTO ls_audit (borrower_id, analysis_id, actor, action, detail, created_at) VALUES (?,?,?,?,?,?)",
-                    (bid, None, actor_of(authorization, x_api_key), "document_uploaded",
-                     json.dumps({"doc_id": did, "type": doc.doc_type, "file": doc.file_name}), now()))
+        _audit_log(conn, bid, None, actor_of(authorization, x_api_key), "document_uploaded",
+                     {"doc_id": did, "type": doc.doc_type, "file": doc.file_name})
         from .jobs import enqueue
         enqueue(conn, "document.verify", "document", did, {"doc_id": did},
                 idempotency_key=f"docverify-{did}")
@@ -621,11 +683,9 @@ def upload_document(bid: str, doc_type: str = Form(...), file: UploadFile = File
         cur.execute("INSERT INTO ls_doc_files (doc_id, sha256, size_bytes, mime, data, created_at)"
                     " VALUES (?,?,?,?,?,?)",
                     (did, digest, len(data), file.content_type or "", data, now()))
-        cur.execute("INSERT INTO ls_audit (borrower_id, analysis_id, actor, action, detail, created_at)"
-                    " VALUES (?,?,?,?,?,?)",
-                    (bid, None, actor_of(authorization, x_api_key), "document_uploaded",
-                     json.dumps({"doc_id": did, "type": doc_type, "file": file.filename,
-                                 "sha256": digest[:16], "bytes": len(data)}), now()))
+        _audit_log(conn, bid, None, actor_of(authorization, x_api_key), "document_uploaded",
+                     {"doc_id": did, "type": doc_type, "file": file.filename,
+                      "sha256": digest[:16], "bytes": len(data)})
         from .jobs import enqueue
         jid = enqueue(conn, "document.verify", "document", did, {"doc_id": did},
                       idempotency_key=f"docverify-{did}")
@@ -672,9 +732,8 @@ def patch_document(doc_id: int, patch: DocPatch, authorization: str | None = Hea
             conn.execute("UPDATE ls_documents SET status=? WHERE id=?", (patch.status, doc_id))
         if patch.note is not None:
             conn.execute("UPDATE ls_documents SET note=? WHERE id=?", (patch.note, doc_id))
-        conn.execute("INSERT INTO ls_audit (borrower_id, analysis_id, actor, action, detail, created_at) VALUES (?,?,?,?,?,?)",
-                     (d["borrower_id"], None, actor_of(authorization, x_api_key), "document_reviewed",
-                      json.dumps({"doc_id": doc_id, "status": patch.status or d["status"]}), now()))
+        _audit_log(conn, d["borrower_id"], None, actor_of(authorization, x_api_key), "document_reviewed",
+                     {"doc_id": doc_id, "status": patch.status or d["status"]})
         conn.commit()
         return {"ok": True}
     finally:
@@ -728,9 +787,8 @@ def put_config(item: ConfigIn, authorization: str | None = Header(default=None),
         conn.execute("INSERT INTO ls_config (key, value, updated_at) VALUES (?,?,?) "
                      "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
                      (item.key, json.dumps(item.value), now()))
-        conn.execute("INSERT INTO ls_audit (borrower_id, analysis_id, actor, action, detail, created_at) VALUES (?,?,?,?,?,?)",
-                     ("*", None, actor_of(authorization, x_api_key), "config_changed",
-                      json.dumps({"key": item.key, "value": item.value}), now()))
+        _audit_log(conn, "*", None, actor_of(authorization, x_api_key), "config_changed",
+                     {"key": item.key, "value": item.value})
         conn.commit()
         return {"ok": True, "key": item.key, "value": item.value}
     finally:
@@ -764,6 +822,96 @@ def admin_audit(limit: int = 50, authorization: str | None = Header(default=None
         return [dict(r) for r in conn.execute("SELECT * FROM ls_audit ORDER BY id DESC LIMIT ?", (min(limit, 200),))]
     finally:
         conn.close()
+
+
+@router.get("/admin/audit/verify")
+def admin_audit_verify(authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
+    """Walk the tamper-evident hash chain. ok=false names the first bad row."""
+    require_perm(authorization, x_api_key, "admin.read")
+    from .notify import verify_audit_chain
+    conn = _DB()
+    try:
+        return verify_audit_chain(conn)
+    finally:
+        conn.close()
+
+
+# ---------------- admin: backups ----------------
+# SQLite file snapshots for the single-file deployment. Kept beside the live
+# DB (NOT in git). Render's free disk survives restarts but not redeploys —
+# download copies off-host on a schedule; Postgres remains the real answer.
+
+BACKUP_KEEP = 7
+
+
+def _backup_dir() -> "Path":
+    from pathlib import Path as _P
+    conn = _DB()
+    try:
+        row = conn.execute("PRAGMA database_list").fetchone()
+        live = _P(row["file"]).resolve()
+    finally:
+        conn.close()
+    d = live.parent / "backups"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _backup_name_ok(name: str) -> bool:
+    import re
+    return re.fullmatch(r"lending-\d{8}T\d{6}\.db", name or "") is not None
+
+
+@router.post("/admin/backup")
+def create_backup(authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
+    require_perm(authorization, x_api_key, "jobs.manage")
+    import sqlite3
+    from pathlib import Path as _P
+    d = _backup_dir()
+    name = f"lending-{datetime.utcnow().strftime('%Y%m%dT%H%M%S')}.db"
+    dest = d / name
+    src = _DB()
+    try:
+        dst = sqlite3.connect(str(dest))
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+    finally:
+        src.close()
+    kept = sorted(p.name for p in d.glob("lending-*.db"))
+    for old in kept[:-BACKUP_KEEP]:
+        try:
+            (d / old).unlink()
+        except Exception:
+            pass
+    kept = sorted(p.name for p in d.glob("lending-*.db"))
+    return {"ok": True, "file": name, "bytes": dest.stat().st_size,
+            "kept": kept, "note": "Download off-host on a schedule — free-tier disk does not survive redeploys."}
+
+
+@router.get("/admin/backups")
+def list_backups(authorization: str | None = Header(default=None), x_api_key: str | None = Header(default=None)):
+    require_perm(authorization, x_api_key, "jobs.manage")
+    d = _backup_dir()
+    out = []
+    for p in sorted(d.glob("lending-*.db"), reverse=True):
+        out.append({"file": p.name, "bytes": p.stat().st_size,
+                    "created_at": datetime.utcfromtimestamp(p.stat().st_mtime).isoformat()})
+    return out
+
+
+@router.get("/admin/backups/{name}")
+def download_backup(name: str, authorization: str | None = Header(default=None),
+                    x_api_key: str | None = Header(default=None)):
+    require_perm(authorization, x_api_key, "jobs.manage")
+    from fastapi.responses import FileResponse
+    if not _backup_name_ok(name):
+        raise HTTPException(400, "Invalid backup name")
+    p = _backup_dir() / name
+    if not p.exists():
+        raise HTTPException(404, "Backup not found")
+    return FileResponse(str(p), media_type="application/x-sqlite3", filename=name)
 
 
 # ---------------- admin: command center ----------------
@@ -904,10 +1052,9 @@ def review_approval(aid: int, item: ReviewIn,
         ts = now()
         conn.execute("UPDATE ls_analyses SET review_decision=?, review_note=?, reviewed_by=?, reviewed_at=? WHERE id=?",
                      (item.decision, (item.note or "").strip(), actor, ts, aid))
-        conn.execute("INSERT INTO ls_audit (borrower_id, analysis_id, actor, action, detail, created_at) VALUES (?,?,?,?,?,?)",
-                     (a["borrower_id"], aid, actor, "review_decision",
-                      json.dumps({"from": a["decision"], "to": item.decision,
-                                  "note": (item.note or "").strip()}), ts))
+        _audit_log(conn, a["borrower_id"], aid, actor, "review_decision",
+                      {"from": a["decision"], "to": item.decision,
+                       "note": (item.note or "").strip()})
         conn.commit()
         return {"ok": True, "analysis_id": aid, "from": a["decision"], "to": item.decision}
     finally:
@@ -926,10 +1073,12 @@ def admin_sessions(authorization: str | None = Header(default=None), x_api_key: 
     try:
         try:
             rows = conn.execute(
-                "SELECT token, phone, display_name, role, created_at, expires_at FROM sessions ORDER BY created_at DESC LIMIT 100").fetchall()
+                "SELECT rowid AS sid, token, phone, display_name, role, created_at, expires_at FROM sessions ORDER BY created_at DESC LIMIT 100").fetchall()
         except Exception:
             return []
-        return [{"token_prefix": r["token"][:8] + "…", "token": r["token"],
+        # NEVER return live tokens: only the prefix (for display) plus the
+        # internal row id, which is what revocation resolves server-side.
+        return [{"id": r["sid"], "token_prefix": r["token"][:8] + "…",
                  "phone": r["phone"], "display_name": r["display_name"], "role": r["role"],
                  "created_at": r["created_at"], "expires_at": r["expires_at"],
                  "current": r["token"] == mine,
@@ -938,20 +1087,25 @@ def admin_sessions(authorization: str | None = Header(default=None), x_api_key: 
         conn.close()
 
 
-@router.delete("/admin/sessions/{token}")
-def revoke_session(token: str, authorization: str | None = Header(default=None),
+@router.delete("/admin/sessions/{ref}")
+def revoke_session(ref: str, authorization: str | None = Header(default=None),
                    x_api_key: str | None = Header(default=None)):
     require_perm(authorization, x_api_key, "sessions.revoke")
     conn = _DB()
     try:
         cur = conn.cursor()
-        row = cur.execute("SELECT * FROM sessions WHERE token=?", (token,)).fetchone()
+        # Prefer the opaque row id; a full token still works for callers that
+        # already hold one (e.g. signing out your own other device).
+        row = None
+        if ref.isdigit():
+            row = cur.execute("SELECT * FROM sessions WHERE rowid=?", (int(ref),)).fetchone()
+        if row is None:
+            row = cur.execute("SELECT * FROM sessions WHERE token=?", (ref,)).fetchone()
         if not row:
             raise HTTPException(404, "Session not found")
-        cur.execute("DELETE FROM sessions WHERE token=?", (token,))
-        cur.execute("INSERT INTO ls_audit (borrower_id, analysis_id, actor, action, detail, created_at) VALUES (?,?,?,?,?,?)",
-                    ("*", None, actor_of(authorization, x_api_key), "session_revoked",
-                     json.dumps({"phone": row["phone"], "display_name": row["display_name"]}), now()))
+        cur.execute("DELETE FROM sessions WHERE token=?", (row["token"],))
+        _audit_log(conn, "*", None, actor_of(authorization, x_api_key), "session_revoked",
+                     {"phone": row["phone"], "display_name": row["display_name"]})
         conn.commit()
         return {"ok": True}
     finally:

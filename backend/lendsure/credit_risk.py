@@ -131,7 +131,7 @@ def model_public():
     train_rows = m["data_source"]["real_rows"] + m["data_source"]["synthetic_rows"]
     return {
         "model_id": m["model_id"],
-        "n_features": len(m.get("feature_notes", {})) or 16,
+        "n_features": serve.feature_count(),
         "train_rows": train_rows,
         "test_rows": tm["n"],
         "roc_auc": round(tm["roc_auc"], 2),

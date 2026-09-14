@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth, guardLender, isGuest } from "../context/AuthContext";
 import { useToast } from "../components/ui/Toast";
 import { jobs } from "../lib/api";
+import { formatDate } from "../lib/dates";
 import PageHeader from "../components/layout/PageHeader";
 import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
@@ -77,7 +78,7 @@ export default function AdminJobs() {
                     <td><Badge variant={VARIANT[j.status] || "LOW"}>{j.status}</Badge></td>
                     <td>{j.attempts}/{j.max_attempts}</td>
                     <td style={{ fontSize: 12, color: "var(--danger)", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis" }}>{j.error || "—"}</td>
-                    <td style={{ fontSize: 12, color: "var(--text-muted)" }}>{(j.finished_at || "").slice(0, 16).replace("T", " ") || "—"}</td>
+                    <td style={{ fontSize: 12, color: "var(--text-muted)" }}>{formatDate(j.finished_at)}</td>
                     <td>{j.status === "FAILED" && <Button variant="ghost" size="sm" disabled={guest} onClick={() => retry(j.id)}>Retry</Button>}</td>
                   </tr>
                 ))}

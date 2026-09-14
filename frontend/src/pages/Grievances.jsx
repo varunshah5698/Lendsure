@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../components/ui/Toast";
 import { grievances } from "../lib/api";
+import { formatDate } from "../lib/dates";
 import PageHeader from "../components/layout/PageHeader";
 import Card from "../components/ui/Card";
 import Badge from "../components/ui/Badge";
@@ -63,7 +64,7 @@ export default function Grievances() {
                     <td>{g.subject}<br /><small style={{ color: "var(--text-muted)" }}>{g.name} · {g.phone}</small></td>
                     <td><Badge variant={g.status === "OPEN" ? "MEDIUM" : g.status === "RESOLVED" || g.status === "CLOSED" ? "APPROVE" : "MANUAL_REVIEW"}>{g.status.replace(/_/g, " ")}</Badge></td>
                     <td style={{ fontSize: 12 }}>{g.assigned_to || <span style={{ color: "var(--text-muted)" }}>Unassigned</span>}</td>
-                    <td style={{ fontSize: 12, color: "var(--text-muted)" }}>{(g.created_at || "").slice(0, 16).replace("T", " ")}</td>
+                    <td style={{ fontSize: 12, color: "var(--text-muted)" }}>{formatDate(g.created_at)}</td>
                   </tr>
                 ))}
               </tbody>

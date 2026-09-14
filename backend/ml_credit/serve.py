@@ -68,6 +68,11 @@ def loaded() -> bool:
     return _bundle() is not None
 
 
+def feature_count() -> int:
+    b = _bundle()
+    return len(b["features"]) if b else 0
+
+
 def metadata() -> dict | None:
     b = _bundle()
     return b["meta"] if b else None

@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useAuth, guardLender, isGuest } from "../context/AuthContext";
 import { useToast } from "../components/ui/Toast";
 import { loans, inr } from "../lib/api";
+import { formatDate } from "../lib/dates";
 import PageHeader from "../components/layout/PageHeader";
 import Card, { CardHeader, CardTitle, CardDescription, CardContent } from "../components/ui/Card";
 import Button from "../components/ui/Button";
@@ -100,14 +101,14 @@ export default function LoanDetail() {
             {(loan.repayments || []).map((p) => (
               <div key={p.id} className="audit-row">
                 <div><b>{inr(p.amount)}</b> <span style={{ color: "var(--text-muted)" }}>· {p.method} · {p.recorded_by}</span></div>
-                <small style={{ color: "var(--text-muted)" }}>{(p.created_at || "").slice(0, 16).replace("T", " ")}</small>
+                <small style={{ color: "var(--text-muted)" }}>{formatDate(p.created_at)}</small>
               </div>
             ))}
             <CardHeader><CardTitle>Timeline</CardTitle></CardHeader>
             {(loan.timeline || []).map((e) => (
               <div key={e.id} className="audit-row">
                 <div><b>{e.type.replace(/([A-Z])/g, " $1").trim()}</b> <span style={{ color: "var(--text-muted)" }}>· {e.actor}</span></div>
-                <small style={{ color: "var(--text-muted)" }}>{(e.created_at || "").slice(0, 16).replace("T", " ")}</small>
+                <small style={{ color: "var(--text-muted)" }}>{formatDate(e.created_at)}</small>
               </div>
             ))}
           </CardContent>

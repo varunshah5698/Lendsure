@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../components/ui/Toast";
 import { loans, inr } from "../lib/api";
+import { formatDate } from "../lib/dates";
 import { isGuest } from "../context/AuthContext";
 import PageHeader from "../components/layout/PageHeader";
 import Card from "../components/ui/Card";
@@ -77,7 +78,7 @@ export default function LoanRequests() {
                     <td><b>{inr(r.amount)}</b></td>
                     <td style={{ fontSize: 12 }}>{r.interest_rate}% × {r.duration_months}m</td>
                     <td><Badge variant={r.status === "APPROVED" ? "APPROVE" : r.status === "REJECTED" ? "HIGH" : r.status}>{r.status.replace(/_/g, " ")}</Badge></td>
-                    <td style={{ fontSize: 12, color: "var(--text-muted)" }}>{(r.updated_at || "").slice(0, 16).replace("T", " ")}</td>
+                    <td style={{ fontSize: 12, color: "var(--text-muted)" }}>{formatDate(r.updated_at)}</td>
                     <td><Button variant="secondary" size="sm" onClick={() => navigate(`/loan-requests/${r.id}`)}>Open</Button></td>
                   </tr>
                 ))}
