@@ -774,11 +774,13 @@ def request_otp(payload: OtpRequestIn):
         raise HTTPException(503, "We could not send the SMS right now. Please try again.")
     if DEMO_OTP and not live_sms and os.environ.get("LENDSURE_LOG_CODES") == "1":
         print(f"[OTP] {phone} -> {code} (valid {OTP_TTL_MIN} min)", flush=True)
+    from lendsure.otp import code_length as _otp_length
     resp: dict[str, Any] = {
         "ok": True,
         "message": f"OTP sent to +91 {phone}",
         "expires_in_sec": OTP_TTL_MIN * 60,
         "retry_after_sec": 60,
+        "otp_len": _otp_length(),
     }
     if DEMO_OTP and not live_sms:
         resp["demo_otp"] = code
