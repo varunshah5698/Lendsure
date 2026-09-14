@@ -664,6 +664,15 @@ def _device_verified(conn, email: str, request: Request | None) -> bool:
     return bool(row and row["verified"])
 
 
+@app.get("/api/auth/otp-config")
+def otp_config():
+    """Public OTP policy (lengths, cooldowns) so clients render correctly.
+    Contains no secrets — codes and delivery state never leave here."""
+    from lendsure.otp import code_length, COOLDOWN_SEC, MAX_ATTEMPTS
+    return {"otp_len": code_length(), "cooldown_sec": COOLDOWN_SEC,
+            "ttl_min": OTP_TTL_MIN, "max_attempts": MAX_ATTEMPTS}
+
+
 @app.post("/api/auth/request-otp")
 def request_otp(payload: OtpRequestIn):
     phone = payload.phone.strip()
@@ -673,28 +682,17 @@ def request_otp(payload: OtpRequestIn):
     # to deliver a phone code on. Fail securely instead of pretending to send.
     if not DEMO_OTP:
         raise HTTPException(503, "SMS delivery is not configured on this server. Use email sign-in.")
+    from lendsure.otp import issue as _otp_issue, code_length as _otp_len
     conn = db()
     try:
-        cur = conn.cursor()
-        recent = cur.execute(
-            "SELECT COUNT(*) c FROM otps WHERE phone=? AND created_at > datetime('now','-1 hour')",
-            (phone,),
-        ).fetchone()["c"]
-        if recent >= 5:
-            raise HTTPException(429, "Too many OTP requests. Try again in an hour.")
-        code = f"{secrets.randbelow(900000) + 100000:06d}"
-        now = _now()
-        cur.execute(
-            "INSERT INTO otps (phone, code, attempts, created_at, expires_at) VALUES (?,?,?,?,?)",
-            (phone, code, 0, now.isoformat(), (now + timedelta(minutes=OTP_TTL_MIN)).isoformat()),
-        )
-        conn.commit()
+        code = _otp_issue(conn, "phone", phone, ttl_min=OTP_TTL_MIN)
     finally:
         conn.close()
     # OTP codes reach logs ONLY in explicit demo-debug mode — never in production.
     if DEMO_OTP and os.environ.get("LENDSURE_LOG_CODES") == "1":
         print(f"[OTP] {phone} -> {code} (valid {OTP_TTL_MIN} min)", flush=True)
-    resp: dict[str, Any] = {"ok": True, "message": f"OTP sent to +91 {phone}", "expires_in_sec": OTP_TTL_MIN * 60}
+    resp: dict[str, Any] = {"ok": True, "message": f"OTP sent to +91 {phone}", "expires_in_sec": OTP_TTL_MIN * 60,
+                            "otp_len": _otp_len()}
     if DEMO_OTP:
         resp["demo_otp"] = code
         resp["message"] += " (demo mode: code shown on screen)"
@@ -705,27 +703,14 @@ def request_otp(payload: OtpRequestIn):
 def verify_otp(payload: OtpVerifyIn, request: Request, response: Response):
     phone = payload.phone.strip()
     code = payload.otp.strip()
-    if not re.match(r"^\d{10}$", phone) or not re.match(r"^\d{6}$", code):
-        raise HTTPException(400, "Invalid phone or OTP format")
+    if not re.match(r"^\d{10}$", phone):
+        raise HTTPException(400, "Enter a valid 10-digit mobile number")
+    if not code.isdigit() or not (4 <= len(code) <= 8):
+        raise HTTPException(400, "Enter the code digits")
+    from lendsure.otp import check as _otp_check
     conn = db()
     try:
-        cur = conn.cursor()
-        row = cur.execute(
-            "SELECT * FROM otps WHERE phone=? AND expires_at > datetime('now') ORDER BY id DESC LIMIT 1",
-            (phone,),
-        ).fetchone()
-        if not row:
-            raise HTTPException(400, "OTP expired or not found. Request a new one.")
-        if row["attempts"] >= 5:
-            cur.execute("DELETE FROM otps WHERE phone=?", (phone,))
-            conn.commit()
-            raise HTTPException(400, "Too many wrong attempts. Request a new OTP.")
-        if row["code"] != code:
-            cur.execute("UPDATE otps SET attempts = attempts + 1 WHERE id=?", (row["id"],))
-            conn.commit()
-            raise HTTPException(400, f"Wrong OTP. {5 - row['attempts'] - 1} attempt(s) left.")
-        cur.execute("DELETE FROM otps WHERE phone=?", (phone,))
-        conn.commit()
+        _otp_check(conn, "phone", phone, code)
     finally:
         conn.close()
     name = payload.name.strip() or f"Lender {phone[-4:]}"
@@ -845,38 +830,15 @@ def _check_password(password: str, stored: str) -> bool:
 
 
 def _issue_email_otp(conn, email: str, purpose: str) -> str:
-    cur = conn.cursor()
-    recent = cur.execute(
-        "SELECT COUNT(*) c FROM email_otps WHERE email=? AND purpose=? AND created_at > datetime('now','-1 hour')",
-        (email, purpose)).fetchone()["c"]
-    if recent >= 5:
-        raise HTTPException(429, "Too many codes requested. Try again in an hour.")
-    code = f"{secrets.randbelow(900000) + 100000:06d}"
-    now = _now()
-    cur.execute(
-        "INSERT INTO email_otps (email, code, purpose, attempts, created_at, expires_at) VALUES (?,?,?,?,?,?)",
-        (email, code, purpose, 0, now.isoformat(), (now + timedelta(minutes=EMAIL_OTP_TTL_MIN)).isoformat()))
-    conn.commit()
-    return code
+    """Thin wrapper: identical behavior, centralized in lendsure.otp."""
+    from lendsure.otp import issue as _otp_issue
+    return _otp_issue(conn, "email", email, purpose, ttl_min=EMAIL_OTP_TTL_MIN)
 
 
 def _check_email_otp(conn, email: str, purpose: str, code: str) -> None:
-    cur = conn.cursor()
-    row = cur.execute(
-        "SELECT * FROM email_otps WHERE email=? AND purpose=? AND expires_at > datetime('now') ORDER BY id DESC LIMIT 1",
-        (email, purpose)).fetchone()
-    if not row:
-        raise HTTPException(400, "Code expired or not found. Request a new one.")
-    if row["attempts"] >= 5:
-        cur.execute("DELETE FROM email_otps WHERE email=? AND purpose=?", (email, purpose))
-        conn.commit()
-        raise HTTPException(400, "Too many wrong attempts. Request a new code.")
-    if row["code"] != code:
-        cur.execute("UPDATE email_otps SET attempts = attempts + 1 WHERE id=?", (row["id"],))
-        conn.commit()
-        raise HTTPException(400, f"Wrong code. {5 - row['attempts'] - 1} attempt(s) left.")
-    cur.execute("DELETE FROM email_otps WHERE email=? AND purpose=?", (email, purpose))
-    conn.commit()
+    """Thin wrapper: identical behavior, centralized in lendsure.otp."""
+    from lendsure.otp import check as _otp_check
+    _otp_check(conn, "email", email, code, purpose)
 
 
 class RegisterIn(BaseModel):
@@ -938,9 +900,11 @@ def register(payload: RegisterIn):
     finally:
         conn.close()
     sent = send_email_otp(email, code, "verify")
+    from lendsure.otp import code_length as _otp_len_cfg
     resp: dict[str, Any] = {
         "ok": True, "email": email, "email_sent": sent,
         "message": "If the account is eligible, check your inbox for further instructions.",
+        "otp_len": _otp_len_cfg(),
         **_unsent_code_or_503(sent, code),
     }
     return resp
@@ -1028,9 +992,11 @@ def email_login(payload: LoginIn, request: Request, response: Response):
             code = _issue_email_otp(conn, email, "login")
             conn.commit()
             sent = send_email_otp(email, code, "verify")
+            from lendsure.otp import code_length as _otp_len_cfg2
             resp: dict[str, Any] = {
                 "ok": True, "otp_required": True, "email": email, "email_sent": sent,
                 "message": "New device — enter the verification code sent to your email.",
+                "otp_len": _otp_len_cfg2(),
                 **_unsent_code_or_503(sent, code),
             }
             _audit_event("auth_otp_challenge", f"{row['name']} ({email})", {"reason": "new-device"})

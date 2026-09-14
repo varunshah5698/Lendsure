@@ -14,8 +14,9 @@ export default function VerifyOtp() {
   const location = useLocation();
   const state = location.state || {};
   const { kind, phone = "", email = "", name = "", demoOtp: initialDemo = null } = state;
+  const N = Number.isInteger(state.otpLen) && state.otpLen >= 4 && state.otpLen <= 8 ? state.otpLen : 6;
 
-  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  const [otp, setOtp] = useState(() => Array(N).fill(""));
   const [demoOtp, setDemoOtp] = useState(initialDemo);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -37,13 +38,13 @@ export default function VerifyOtp() {
   if (!kind || !target) return <Navigate to="/auth" replace />;
 
   const resetBoxes = () => {
-    setOtp(["", "", "", "", "", ""]);
+    setOtp(Array(N).fill(""));
     setDemoOtp(null);
   };
 
   const handleVerify = async () => {
     const code = otp.join("");
-    if (!/^\d{6}$/.test(code)) { setError("Enter all 6 digits"); return; }
+    if (!new RegExp(`^\\d{${N}}$`).test(code)) { setError(`Enter all ${N} digits`); return; }
     setError(""); setLoading(true);
     try {
       if (kind === "phone") await signIn("verify", { phone, otp: code, name });
@@ -77,7 +78,7 @@ export default function VerifyOtp() {
   const handleInput = (i, val) => {
     const d = val.replace(/\D/g, "").slice(0, 1);
     const next = [...otp]; next[i] = d; setOtp(next);
-    if (d && i < 5) otpRefs.current[i + 1]?.focus();
+    if (d && i < N - 1) otpRefs.current[i + 1]?.focus();
   };
 
   const handleKey = (i, e) => {
@@ -97,7 +98,7 @@ export default function VerifyOtp() {
         <p className="auth-subtitle">
           {kind === "login"
             ? "New device — we sent a code to your email"
-            : "We sent a 6-digit code — enter it below"}
+            : `We sent a ${N}-digit code — enter it below`}
         </p>
 
         <div className="auth-form fade-in">

@@ -30,14 +30,28 @@ export default function Auth() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  const [otpLen, setOtpLen] = useState(6);
+  const [otp, setOtp] = useState(() => Array(6).fill(""));
+
+  useEffect(() => {
+    let live = true;
+    import("../lib/api").then(({ auth }) =>
+      auth.otpConfig()
+        .then((c) => {
+          if (!live) return;
+          const n = Number(c.otp_len) || 6;
+          if (n >= 4 && n <= 8) { setOtpLen(n); setOtp(Array(n).fill("")); }
+        })
+        .catch(() => {}));
+    return () => { live = false; };
+  }, []);
   const [demoOtp, setDemoOtp] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const otpRefs = useRef([]);
 
   const resetOtpBoxes = () => {
-    setOtp(["", "", "", "", "", ""]);
+    setOtp(Array(otpLen).fill(""));
     setDemoOtp(null);
   };
 
@@ -47,7 +61,7 @@ export default function Auth() {
     setError(""); setLoading(true);
     try {
       const r = await signIn("otp", { phone, name });
-      navigate("/verify-otp", { state: { kind: "phone", phone, name, demoOtp: r.demo_otp || null } });
+      navigate("/verify-otp", { state: { kind: "phone", phone, name, demoOtp: r.demo_otp || null, otpLen: r.otp_len || 6 } });
     } catch (e) { setError(e.message); }
     setLoading(false);
   };
@@ -70,7 +84,7 @@ export default function Auth() {
       const r = await signIn("email-login", { email: email.trim(), password });
       if (r && r.otp_required) {
         // New device: continue on the dedicated code page.
-        navigate("/verify-otp", { state: { kind: "login", email: email.trim(), demoOtp: r.demo_otp || null } });
+        navigate("/verify-otp", { state: { kind: "login", email: email.trim(), demoOtp: r.demo_otp || null, otpLen: r.otp_len || 6 } });
       } else {
         navigate("/dashboard");
       }
@@ -84,7 +98,7 @@ export default function Auth() {
     setError(""); setLoading(true);
     try {
       const r = await signIn("register", { name: name.trim(), email: email.trim(), password });
-      navigate("/verify-otp", { state: { kind: "register", email: email.trim(), demoOtp: r.demo_otp || null } });
+      navigate("/verify-otp", { state: { kind: "register", email: email.trim(), demoOtp: r.demo_otp || null, otpLen: r.otp_len || 6 } });
     } catch (e) { setError(e.message); }
     setLoading(false);
   };
@@ -103,7 +117,7 @@ export default function Auth() {
 
   const handleReset = async () => {
     const code = otp.join("");
-    if (!/^\d{6}$/.test(code)) { setError("Enter all 6 digits"); return; }
+    if (!new RegExp(`^\\d{${otpLen}}$`).test(code)) { setError(`Enter all ${otpLen} digits`); return; }
     if (newPassword.length < 8) { setError("New password must be at least 8 characters"); return; }
     setError(""); setLoading(true);
     try {
@@ -120,7 +134,7 @@ export default function Auth() {
   const handleOtpInput = (i, val) => {
     const d = val.replace(/\D/g, "").slice(0, 1);
     const next = [...otp]; next[i] = d; setOtp(next);
-    if (d && i < 5) otpRefs.current[i + 1]?.focus();
+    if (d && i < otpLen - 1) otpRefs.current[i + 1]?.focus();
   };
 
   const handleOtpKey = (i, e) => {

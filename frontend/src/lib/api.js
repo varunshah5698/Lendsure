@@ -102,6 +102,8 @@ export const auth = {
     api("/auth/verify-email", { method: "POST", body: JSON.stringify({ email, otp }) }),
   resendCode: (email) =>
     api("/auth/resend-code", { method: "POST", body: JSON.stringify({ email }) }),
+  otpConfig: () =>
+    api("/auth/otp-config"),
   emailLogin: (email, password) =>
     api("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
   verifyLogin: (email, otp) =>
