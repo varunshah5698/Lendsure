@@ -437,10 +437,6 @@ from lendsure import intel as intel_api  # noqa: E402
 intel_api.configure(db, _ls_session)
 app.include_router(intel_api.router)
 
-from lendsure import copilot as copilot_api  # noqa: E402
-copilot_api.configure(db, _ls_session)
-app.include_router(copilot_api.router)
-
 from lendsure import simulate as sim_api  # noqa: E402
 sim_api.configure(db, _ls_session)
 app.include_router(sim_api.router)

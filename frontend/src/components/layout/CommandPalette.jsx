@@ -12,7 +12,6 @@ const ROUTES = [
   { label: "Cases", path: "/cases", hint: "", lender: true },
   { label: "AI Assistant", path: "/assistant", hint: "" },
   { label: "Grievances", path: "/grievances", hint: "", lender: true },
-  { label: "Copilot", path: "/copilot", hint: "", lender: true },
   { label: "Simulations", path: "/simulations", hint: "", lender: true },
   { label: "Fraud Intelligence", path: "/borrowers", hint: "G F" },
   { label: "Approvals", path: "/admin/approvals", hint: "", lender: true },

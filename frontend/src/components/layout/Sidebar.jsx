@@ -10,7 +10,6 @@ const NAV = [
     { label: "Dashboard", path: "/dashboard", icon: "grid" },
     { label: "Borrowers", path: "/borrowers", icon: "users" },
     { label: "AI Assistant", path: "/assistant", icon: "sparkles" },
-    { label: "Copilot", path: "/copilot", icon: "cpu", lender: true },
   ]},
   { section: "Lending", items: [
     { label: "Loan Requests", path: "/loan-requests", icon: "file-text", lender: true },

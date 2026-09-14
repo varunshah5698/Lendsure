@@ -17,7 +17,6 @@ import LoanRequestDetail from "./pages/LoanRequestDetail";
 import Loans from "./pages/Loans";
 import LoanDetail from "./pages/LoanDetail";
 import Cases from "./pages/Cases";
-import Copilot from "./pages/Copilot";
 import Assistant from "./pages/Assistant";
 import Simulations from "./pages/Simulations";
 import Officers from "./pages/Officers";
@@ -83,7 +82,6 @@ function AppLayout() {
             <Route path="/cases" element={<RequireLender><Cases /></RequireLender>} />
             <Route path="/grievances" element={<RequireLender><Grievances /></RequireLender>} />
             <Route path="/grievances/:id" element={<RequireLender><GrievanceDetail /></RequireLender>} />
-            <Route path="/copilot" element={<RequireLender><Copilot /></RequireLender>} />
             <Route path="/assistant" element={<Assistant />} />
             <Route path="/simulations" element={<RequireLender><Simulations /></RequireLender>} />
             <Route path="/security" element={<RequireLender><Security /></RequireLender>} />

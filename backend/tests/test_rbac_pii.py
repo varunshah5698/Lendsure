@@ -7,7 +7,7 @@ PII = {"phone", "email", "address_line", "bank_account", "device_id"}
 def test_guest_blocked_from_governance(guest):
     for path in ["/api/ls/admin/overview", "/api/ls/admin/sessions",
                  "/api/ls/admin/config", "/api/ls/admin/model",
-                 "/api/ls/admin/approvals", "/api/ls/copilot/ask"]:
+                 "/api/ls/admin/approvals"]:
         r = guest.post(path, json={}) if "ask" in path or "analyze" in path else guest.get(path)
         assert r.status_code in (403, 422), (path, r.status_code)
 
@@ -23,8 +23,6 @@ def test_guest_blocked_from_runs(guest):
 
 def test_lender_passes_governance(lender):
     assert lender.get("/api/ls/admin/overview").status_code == 200
-    r = lender.post("/api/ls/copilot/ask", json={"question": "hello"})
-    assert r.status_code == 200
 
 
 def test_guest_list_has_no_pii(guest):

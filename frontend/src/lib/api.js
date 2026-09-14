@@ -350,12 +350,6 @@ export const intel = {
   portfolio: (token) => api("/ls/intel/portfolio", {}, token),
 };
 
-// Copilot (deterministic analyst over live records)
-export const copilot = {
-  ask: (question, token) =>
-    api("/ls/copilot/ask", { method: "POST", body: JSON.stringify({ question }) }, token),
-};
-
 // Simulation center
 export const sim = {
   scenarios: (token) => api("/ls/admin/simulate/scenarios", {}, token),

@@ -102,11 +102,10 @@ def actor_of(authorization: Optional[str], x_api_key: Optional[str] = None) -> s
 # never inline `role == ...` comparisons in endpoints.
 ROLE_PERMS = {
     # Guests are heavily restrained: read-only view of borrowers, their
-    # analyses and market data. No runs, no loans, no governance, no copilot.
+    # analyses and market data. No runs, no loans, no governance, no assistant bots.
     "guest": {"borrower.read", "analysis.read", "finance.read", "graph.read"},
     "lender": {"borrower.read", "borrower.create", "analysis.read", "analysis.run",
                "simulation.run", "finance.read", "admin.read", "loan.read", "graph.read",
-               "copilot.ask",
                "documents.write", "policy.update", "review.decide",
                "keys.manage", "sessions.revoke",
                "loan_request.create", "loan_request.decide", "repayment.record",
@@ -114,8 +113,7 @@ ROLE_PERMS = {
                "grievance.read", "grievance.manage"},
     "service": {"borrower.read", "borrower.create", "analysis.read", "analysis.run",
                 "simulation.run", "finance.read", "admin.read", "loan.read", "graph.read",
-                "copilot.ask",
-                "documents.write", "policy.update", "review.decide",
+                 "documents.write", "policy.update", "review.decide",
                 "keys.manage", "sessions.revoke",
                 "loan_request.create", "loan_request.decide", "repayment.record",
                 "jobs.manage", "cases.manage", "officer.manage",
@@ -157,7 +155,7 @@ _ALL_PERMS = {p for perms in ROLE_PERMS.values() for p in perms}
 SCOPE_PERMS = {
     "read": {p for p in _ALL_PERMS if p.endswith(".read")},
     "write": {p for p in _ALL_PERMS if p.endswith(".read")}
-             | {"borrower.create", "analysis.run", "simulation.run", "copilot.ask",
+             | {"borrower.create", "analysis.run", "simulation.run",
                 "documents.write", "loan_request.create", "loan_request.decide",
                 "repayment.record", "cases.manage", "review.decide", "grievance.manage"},
     "admin": _ALL_PERMS,
