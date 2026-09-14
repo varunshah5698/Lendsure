@@ -50,7 +50,10 @@ def now() -> str:
 PROVIDERS = {
     "groq": {
         "base": "https://api.groq.com/openai/v1",
-        "model": "openai/gpt-oss-120b",
+        # 120b is stronger but its free-tier token budget cannot fit a
+        # tool-grounded request; 20b answers the same questions reliably.
+        # Override per deploy with LLM_MODEL.
+        "model": "openai/gpt-oss-20b",
     },
     "cerebras": {
         "base": "https://api.cerebras.ai/v1",

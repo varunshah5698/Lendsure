@@ -24,6 +24,31 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+
+def _load_dotenv():
+    """Minimal .env loader (stdlib only): KEY=value lines from backend/.env.
+    Real environment variables always win — this only fills gaps, so local
+    dev secrets (like LLM_API_KEY) persist across restarts without exports.
+    Runs before any os.environ.get below reads configuration."""
+    try:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, val = line.partition("=")
+                key, val = key.strip(), val.strip().strip("'\"")
+                if key and key not in os.environ:
+                    os.environ[key] = val
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        print(f"[env] ignoring unreadable .env: {e}", flush=True)
+
+
+_load_dotenv()
+
 from lendsure.schema import DDL as LS_DDL, LIFECYCLE_DDL, LS_MIGRATIONS
 
 BASE_DIR = Path(__file__).parent
