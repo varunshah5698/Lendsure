@@ -100,6 +100,8 @@ export const auth = {
     api("/auth/register", { method: "POST", body: JSON.stringify({ name, email, password }) }),
   verifyEmail: (email, otp) =>
     api("/auth/verify-email", { method: "POST", body: JSON.stringify({ email, otp }) }),
+  resendCode: (email) =>
+    api("/auth/resend-code", { method: "POST", body: JSON.stringify({ email }) }),
   emailLogin: (email, password) =>
     api("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
   verifyLogin: (email, otp) =>

@@ -896,6 +896,10 @@ class VerifyEmailIn(BaseModel):
     otp: str
 
 
+class ResendIn(BaseModel):
+    email: str
+
+
 class ForgotIn(BaseModel):
     email: str
 
@@ -939,6 +943,33 @@ def register(payload: RegisterIn):
         "message": "If the account is eligible, check your inbox for further instructions.",
         **_unsent_code_or_503(sent, code),
     }
+    return resp
+
+
+@app.post("/api/auth/resend-code")
+def resend_code(payload: ResendIn):
+    """Resend a registration verification code (unverified accounts only)."""
+    email = payload.email.strip().lower()
+    conn = db()
+    try:
+        row = conn.execute("SELECT email_verified FROM users WHERE email=?", (email,)).fetchone()
+        if not row:
+            raise HTTPException(400, "Account not found. Please register first.")
+        if row["email_verified"]:
+            raise HTTPException(400, "Email already verified — just sign in.")
+        recent = conn.execute(
+            "SELECT created_at FROM email_otps WHERE email=? AND purpose='verify'"
+            " ORDER BY id DESC LIMIT 1", (email,)).fetchone()
+        if recent and recent["created_at"] > (_now() - timedelta(seconds=60)).isoformat():
+            raise HTTPException(429, "A code was just sent — check your inbox (or wait a minute to resend).")
+        code = _issue_email_otp(conn, email, "verify")
+        conn.commit()
+    finally:
+        conn.close()
+    sent = send_email_otp(email, code, "verify")
+    resp: dict[str, Any] = {"ok": True, "email": email, "email_sent": sent}
+    if not sent:
+        resp.update(_unsent_code_or_503(sent, code))
     return resp
 
 

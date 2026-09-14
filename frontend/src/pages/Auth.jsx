@@ -24,26 +24,17 @@ export default function Auth() {
   }, []);
 
   const [mode, setMode] = useState("email");
-  const [step, setStep] = useState("phone");
-  const [emailStep, setEmailStep] = useState("login"); // login|register|verify|forgot|reset
+  const [emailStep, setEmailStep] = useState("login"); // login|register|forgot|reset
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [pendingKind, setPendingKind] = useState("register"); // register|login
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [demoOtp, setDemoOtp] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [timer, setTimer] = useState(0);
   const otpRefs = useRef([]);
-
-  useEffect(() => {
-    if (timer <= 0) return;
-    const t = setTimeout(() => setTimer(timer - 1), 1000);
-    return () => clearTimeout(t);
-  }, [timer]);
 
   const resetOtpBoxes = () => {
     setOtp(["", "", "", "", "", ""]);
@@ -56,21 +47,7 @@ export default function Auth() {
     setError(""); setLoading(true);
     try {
       const r = await signIn("otp", { phone, name });
-      if (r.demo_otp) setDemoOtp(r.demo_otp);
-      setStep("otp");
-      setTimer(45);
-      setTimeout(() => otpRefs.current[0]?.focus(), 100);
-    } catch (e) { setError(e.message); }
-    setLoading(false);
-  };
-
-  const handleVerify = async () => {
-    const code = otp.join("");
-    if (!/^\d{6}$/.test(code)) { setError("Enter all 6 digits"); return; }
-    setError(""); setLoading(true);
-    try {
-      await signIn("verify", { phone, otp: code, name });
-      navigate("/dashboard");
+      navigate("/verify-otp", { state: { kind: "phone", phone, name, demoOtp: r.demo_otp || null } });
     } catch (e) { setError(e.message); }
     setLoading(false);
   };
@@ -92,13 +69,8 @@ export default function Auth() {
     try {
       const r = await signIn("email-login", { email: email.trim(), password });
       if (r && r.otp_required) {
-        // New device: prove the inbox once, then straight in.
-        setPendingKind("login");
-        resetOtpBoxes();
-        if (r.demo_otp) setDemoOtp(r.demo_otp);
-        setEmailStep("verify");
-        setTimer(45);
-        setTimeout(() => otpRefs.current[0]?.focus(), 100);
+        // New device: continue on the dedicated code page.
+        navigate("/verify-otp", { state: { kind: "login", email: email.trim(), demoOtp: r.demo_otp || null } });
       } else {
         navigate("/dashboard");
       }
@@ -112,29 +84,7 @@ export default function Auth() {
     setError(""); setLoading(true);
     try {
       const r = await signIn("register", { name: name.trim(), email: email.trim(), password });
-      setPendingKind("register");
-      resetOtpBoxes();
-      if (r.demo_otp) setDemoOtp(r.demo_otp);
-      setEmailStep("verify");
-      setTimer(45);
-      setTimeout(() => otpRefs.current[0]?.focus(), 100);
-    } catch (e) { setError(e.message); }
-    setLoading(false);
-  };
-
-  const handleEmailVerify = async () => {
-    const code = otp.join("");
-    if (!/^\d{6}$/.test(code)) { setError("Enter all 6 digits"); return; }
-    setError(""); setLoading(true);
-    try {
-      if (pendingKind === "login") {
-        // verify-login returns the fresh profile and sets the session cookie
-        await signIn("verify-login", { email: email.trim(), otp: code });
-        navigate("/dashboard");
-      } else {
-        await signIn("verify-email", { email: email.trim(), otp: code });
-        navigate("/dashboard");
-      }
+      navigate("/verify-otp", { state: { kind: "register", email: email.trim(), demoOtp: r.demo_otp || null } });
     } catch (e) { setError(e.message); }
     setLoading(false);
   };
@@ -147,7 +97,6 @@ export default function Auth() {
       resetOtpBoxes();
       if (r.demo_otp) setDemoOtp(r.demo_otp);
       setEmailStep("reset");
-      setTimer(45);
     } catch (e) { setError(e.message); }
     setLoading(false);
   };
@@ -176,11 +125,7 @@ export default function Auth() {
 
   const handleOtpKey = (i, e) => {
     if (e.key === "Backspace" && !otp[i] && i > 0) otpRefs.current[i - 1]?.focus();
-    if (e.key === "Enter") {
-      if (mode === "otp") handleVerify();
-      else if (emailStep === "verify") handleEmailVerify();
-      else if (emailStep === "reset") handleReset();
-    }
+    if (e.key === "Enter") handleReset();
   };
 
   const otpBoxes = (onEnter) => (
@@ -213,7 +158,7 @@ export default function Auth() {
 
         <div className="auth-tabs">
           <button className={`auth-tab ${mode === "email" ? "auth-tab-active" : ""}`} onClick={() => { setMode("email"); setEmailStep("login"); setError(""); }}>Email</button>
-          <button className={`auth-tab ${mode === "otp" ? "auth-tab-active" : ""}`} onClick={() => { setMode("otp"); setStep("phone"); setError(""); }}>Phone OTP</button>
+          <button className={`auth-tab ${mode === "otp" ? "auth-tab-active" : ""}`} onClick={() => { setMode("otp"); setError(""); }}>Phone OTP</button>
           <button className={`auth-tab ${mode === "guest" ? "auth-tab-active" : ""}`} onClick={() => { setMode("guest"); setError(""); }}>Guest</button>
         </div>
 
@@ -255,21 +200,6 @@ export default function Auth() {
           </div>
         )}
 
-        {mode === "email" && emailStep === "verify" && (
-          <div className="auth-form fade-in">
-            <p className="auth-otp-label">
-              {pendingKind === "login" ? <>New device — code sent to <b>{email}</b></> : <>Code sent to <b>{email}</b> <button className="link-btn" onClick={() => setEmailStep("register")}>change</button></>}
-            </p>
-            {otpBoxes()}
-            {error && <div className="auth-error">{error}</div>}
-            {demoOtp && <div className="auth-demo-otp">Demo OTP · <b>{demoOtp}</b></div>}
-            <Button variant="primary" className="auth-btn" onClick={handleEmailVerify} disabled={loading}>
-              {loading ? "Verifying…" : pendingKind === "login" ? "Verify device & sign in" : "Verify & sign in"}
-            </Button>
-            <p className="auth-hint">One verification per device — future logins need just email + password.</p>
-          </div>
-        )}
-
         {mode === "email" && emailStep === "forgot" && (
           <div className="auth-form fade-in">
             <label className="auth-label">Email address</label>
@@ -298,7 +228,7 @@ export default function Auth() {
           </div>
         )}
 
-        {mode === "otp" && step === "phone" && (
+        {mode === "otp" && (
           <div className="auth-form fade-in">
             <label className="auth-label">Display name <span className="auth-optional">(optional)</span></label>
             <input type="text" placeholder="e.g. Priya Sharma" value={name} onChange={(e) => setName(e.target.value)} className="auth-input" />
@@ -309,22 +239,6 @@ export default function Auth() {
               {loading ? "Sending…" : "Send OTP →"}
             </Button>
             <p className="auth-hint">Demo build — the OTP appears on screen, no SMS needed.</p>
-          </div>
-        )}
-
-        {mode === "otp" && step === "otp" && (
-          <div className="auth-form fade-in">
-            <p className="auth-otp-label">Code sent to <b>+91 {phone}</b> <button className="link-btn" onClick={() => setStep("phone")}>change</button></p>
-            {otpBoxes()}
-            {error && <div className="auth-error">{error}</div>}
-            {demoOtp && <div className="auth-demo-otp">Demo OTP · <b>{demoOtp}</b></div>}
-            <Button variant="primary" className="auth-btn" onClick={handleVerify} disabled={loading}>
-              {loading ? "Verifying…" : "Verify & sign in"}
-            </Button>
-            <div className="auth-resend">
-              {timer > 0 ? <span className="auth-timer">Resend in 0:{String(timer).padStart(2, "0")}</span> :
-                <button className="link-btn" onClick={handleSendOtp}>Resend code</button>}
-            </div>
           </div>
         )}
 

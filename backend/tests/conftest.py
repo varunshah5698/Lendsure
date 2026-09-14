@@ -8,6 +8,10 @@ import os
 import sys
 
 os.environ.setdefault("LENDSURE_DEMO_OTP", "1")
+# Force demo delivery in tests even if the developer machine has real SMTP
+# configured: tests must be hermetic (no network, no real emails sent).
+os.environ["LENDSURE_SMTP_USER"] = ""
+os.environ["LENDSURE_SMTP_APP_PASSWORD"] = ""
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
