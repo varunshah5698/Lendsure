@@ -38,15 +38,18 @@ async function fetchOnce(path, opts, timeoutMs) {
 }
 
 export async function api(path, opts = {}, token = null) {
+  const { timeoutMs, ...fetchOpts } = opts || {};
   const first = !firstRequestDone;
+  const firstBudget = timeoutMs || FIRST_TIMEOUT_MS;
+  const normalBudget = timeoutMs || REQUEST_TIMEOUT_MS;
   let r;
   try {
     try {
-      r = await fetchOnce(path, opts, first ? FIRST_TIMEOUT_MS : REQUEST_TIMEOUT_MS);
+      r = await fetchOnce(path, fetchOpts, first ? firstBudget : normalBudget);
     } catch (e) {
       // One automatic retry for the waking-server case only.
       if (first && (e?.name === "AbortError" || e instanceof TypeError)) {
-        r = await fetchOnce(path, opts, FIRST_TIMEOUT_MS);
+        r = await fetchOnce(path, fetchOpts, firstBudget);
       } else {
         throw e;
       }
@@ -277,6 +280,14 @@ export const mlCredit = {
   predictBatch: (borrower_ids, token) =>
     api("/ls/ml/credit/predict-batch", { method: "POST", body: JSON.stringify({ borrower_ids }) }, token),
   model: (token) => api("/ls/ml/credit/model", {}, token),
+};
+
+// AI Recovery Intelligence (real LLM, tool-grounded — never mocked)
+export const assistant = {
+  status: (token) => api("/ls/assistant/status", {}, token),
+  chat: (message, history, token) =>
+    api("/ls/assistant/chat",
+      { method: "POST", body: JSON.stringify({ message, history }), timeoutMs: 95000 }, token),
 };
 
 // Investigation cases

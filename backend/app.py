@@ -428,6 +428,10 @@ from lendsure import credit_risk as cr_api  # noqa: E402
 cr_api.configure(db, _ls_session)
 app.include_router(cr_api.router)
 
+from lendsure import assistant as asst_api  # noqa: E402
+asst_api.configure(db, _ls_session)
+app.include_router(asst_api.router)
+
 class OtpRequestIn(BaseModel):
     phone: str
     name: str = ""

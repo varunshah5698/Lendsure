@@ -10,6 +10,7 @@ const ROUTES = [
   { label: "Loan Requests", path: "/loan-requests", hint: "G L", lender: true },
   { label: "Loans", path: "/loans", hint: "", lender: true },
   { label: "Cases", path: "/cases", hint: "", lender: true },
+  { label: "AI Assistant", path: "/assistant", hint: "" },
   { label: "Grievances", path: "/grievances", hint: "", lender: true },
   { label: "Copilot", path: "/copilot", hint: "", lender: true },
   { label: "Simulations", path: "/simulations", hint: "", lender: true },
