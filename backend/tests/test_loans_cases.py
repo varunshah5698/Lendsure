@@ -78,7 +78,8 @@ def test_expired_api_key_rejected(client, lender):
             conn.commit()
         finally:
             conn.close()
-        assert bare.get("/api/ls/admin/stats", headers={"X-API-Key": key}).status_code == 403
+        # Expired key = dead credential -> 401 (re-authenticate), never access.
+        assert bare.get("/api/ls/admin/stats", headers={"X-API-Key": key}).status_code == 401
 
 
 def test_read_scope_key_cannot_mutate(client, lender):

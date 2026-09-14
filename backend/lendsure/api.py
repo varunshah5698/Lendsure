@@ -176,6 +176,20 @@ def require_perm(authorization: Optional[str], x_api_key: Optional[str], *perms:
         return "service"
     role = role_of(authorization, x_api_key)
     if not any(p in ROLE_PERMS.get(role, set()) for p in perms):
+        # A presented credential that resolves to nothing = dead session
+        # (expired, idle-timed-out, revoked): 401 so clients re-authenticate.
+        # No credential at all, or a valid session lacking the perm: 403.
+        # (The middleware injects cookie sessions as Bearer, so presence of
+        # the header alone proves nothing — only resolution counts.)
+        presented = bool((authorization or "").strip() or (x_api_key or "").strip())
+        alive = False
+        if presented:
+            try:
+                alive = _RESOLVE(authorization) is not None
+            except Exception:
+                alive = False
+        if presented and not alive:
+            raise HTTPException(401, "Session expired. Please sign in again.")
         raise HTTPException(403, f"Insufficient permissions for role '{role}' (needs: {', '.join(perms)})")
     return role
 

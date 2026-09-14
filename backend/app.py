@@ -644,6 +644,10 @@ def request_otp(payload: OtpRequestIn):
     phone = payload.phone.strip()
     if not re.match(r"^\d{10}$", phone):
         raise HTTPException(400, "Enter a valid 10-digit mobile number")
+    # No SMS gateway is wired: in production (demo off) there is no channel
+    # to deliver a phone code on. Fail securely instead of pretending to send.
+    if not DEMO_OTP:
+        raise HTTPException(503, "SMS delivery is not configured on this server. Use email sign-in.")
     conn = db()
     try:
         cur = conn.cursor()
@@ -733,6 +737,8 @@ def _smtp_configured() -> bool:
 def send_email_otp(to_email: str, code: str, purpose: str) -> bool:
     user = os.environ.get("LENDSURE_SMTP_USER", "")
     pwd = os.environ.get("LENDSURE_SMTP_APP_PASSWORD", "")
+    host = os.environ.get("LENDSURE_SMTP_HOST", "smtp.gmail.com")
+    port = int(os.environ.get("LENDSURE_SMTP_PORT", "587"))
     if not user or not pwd:
         if DEMO_OTP and os.environ.get("LENDSURE_LOG_CODES") == "1":
             print(f"[EMAIL-OTP] {to_email} -> {code} ({purpose}) — SMTP not configured, demo mode", flush=True)
@@ -749,7 +755,7 @@ def send_email_otp(to_email: str, code: str, purpose: str) -> bool:
             f"Your LendSure verification code is: {code}\n\n"
             f"Use it to {action}. It expires in {EMAIL_OTP_TTL_MIN} minutes.\n\n"
             "If you didn't request this, you can safely ignore this email.")
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=20) as s:
+        with smtplib.SMTP(host, port, timeout=20) as s:
             s.starttls()
             s.login(user, pwd)
             s.send_message(msg)
@@ -852,6 +858,7 @@ class RegisterIn(BaseModel):
     name: str = ""
     email: str
     password: str
+    phone: str = ""
 
 
 class LoginIn(BaseModel):
@@ -884,6 +891,9 @@ def register(payload: RegisterIn):
         raise HTTPException(400, reason)
     if len(name) > 60:
         raise HTTPException(400, "Name too long")
+    phone = "".join(ch for ch in (payload.phone or "") if ch.isdigit())
+    if phone and len(phone) != 10:
+        raise HTTPException(400, "Phone must be a 10-digit mobile number")
     conn = db()
     try:
         if conn.execute("SELECT 1 FROM users WHERE email=?", (email,)).fetchone():
@@ -893,8 +903,8 @@ def register(payload: RegisterIn):
             return {"ok": True, "email": email, "email_sent": False,
                     "message": "If the account is eligible, check your inbox for further instructions."}
         conn.execute(
-            "INSERT INTO users (name, email, password_hash, email_verified, created_at) VALUES (?,?,?,?,?)",
-            (name, email, _hash_password(payload.password), 0, _now().isoformat()))
+            "INSERT INTO users (name, email, password_hash, email_verified, created_at, phone) VALUES (?,?,?,?,?,?)",
+            (name, email, _hash_password(payload.password), 0, _now().isoformat(), phone))
         code = _issue_email_otp(conn, email, "verify")
     finally:
         conn.close()

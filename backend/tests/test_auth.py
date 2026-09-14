@@ -154,3 +154,94 @@ def test_production_no_smtp_fails_securely(client, monkeypatch):
                     json={"name": "P", "email": "prod@example.com", "password": "Strongpass1"})
     assert r.status_code == 503
     assert "demo_otp" not in r.json()
+
+
+def test_dead_credential_yields_401_not_403(client, lender):
+    conn = app_module.db()
+    try:
+        conn.execute("UPDATE sessions SET last_active=strftime('%Y-%m-%dT%H:%M:%f','now','-6 minutes')")
+        conn.commit()
+    finally:
+        conn.close()
+    r = lender.get("/api/ls/admin/overview")
+    assert r.status_code == 401
+    assert "expired" in r.json()["detail"].lower()
+
+
+def test_valid_guest_still_gets_403(guest):
+    r = guest.get("/api/ls/admin/overview")
+    assert r.status_code == 403
+    assert "expired" not in r.json()["detail"].lower()
+
+
+def test_phone_otp_disabled_without_demo(client, monkeypatch):
+    import app as app_module
+    monkeypatch.setattr(app_module, "DEMO_OTP", False)
+    r = client.post("/api/auth/request-otp", json={"phone": "9000000009"})
+    assert r.status_code == 503
+
+
+def test_register_persists_phone(client):
+    r = client.post("/api/auth/register",
+                    json={"name": "P", "email": "ph@example.com",
+                          "password": "Strongpass1", "phone": "9811111111"})
+    assert r.status_code == 200
+    conn = app_module.db()
+    try:
+        row = conn.execute("SELECT phone FROM users WHERE email='ph@example.com'").fetchone()
+    finally:
+        conn.close()
+    assert row["phone"] == "9811111111"
+
+
+def test_smtp_host_port_override(monkeypatch):
+    import app as app_module
+    import smtplib
+    seen = {}
+
+    class FakeSMTP:
+        def __init__(self, host, port, timeout=None):
+            seen["host"] = host
+            seen["port"] = port
+        def starttls(self): pass
+        def login(self, u, p): seen["login"] = u
+        def send_message(self, m): seen["sent"] = True
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    monkeypatch.setattr(smtplib, "SMTP", FakeSMTP)
+    monkeypatch.setenv("LENDSURE_SMTP_USER", "u@example.com")
+    monkeypatch.setenv("LENDSURE_SMTP_APP_PASSWORD", "app-pass")
+    monkeypatch.setenv("LENDSURE_SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("LENDSURE_SMTP_PORT", "2525")
+    assert app_module.send_email_otp("to@example.com", "123456", "verify") is True
+    assert seen == {"host": "smtp.example.com", "port": 2525,
+                    "login": "u@example.com", "sent": True}
+
+
+def test_expired_otp_rejected(client):
+    client.post("/api/auth/request-otp", json={"phone": "9000000002"})
+    conn = app_module.db()
+    try:
+        conn.execute("UPDATE otps SET expires_at='2000-01-01T00:00:00' WHERE phone='9000000002'")
+        conn.commit()
+    finally:
+        conn.close()
+    r = client.post("/api/auth/verify-otp",
+                    json={"phone": "9000000002", "otp": "123456"})
+    assert r.status_code == 400
+    assert "expired" in r.json()["detail"].lower()
+
+
+def test_expired_otp_rejected(client):
+    client.post("/api/auth/request-otp", json={"phone": "9000000002"})
+    conn = app_module.db()
+    try:
+        conn.execute("UPDATE otps SET expires_at='2000-01-01T00:00:00' WHERE phone='9000000002'")
+        conn.commit()
+    finally:
+        conn.close()
+    r = client.post("/api/auth/verify-otp",
+                    json={"phone": "9000000002", "otp": "123456"})
+    assert r.status_code == 400
+    assert "expired" in r.json()["detail"].lower()

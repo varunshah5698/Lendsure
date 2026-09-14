@@ -16,10 +16,6 @@ function flagExpired() {
   try { window.dispatchEvent(new Event("lendsure:session-expired")); } catch {}
 }
 
-function hasProfile() {
-  try { return !!localStorage.getItem("ls_profile"); } catch { return false; }
-}
-
 async function fetchOnce(path, opts, timeoutMs) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -72,12 +68,6 @@ export async function api(path, opts = {}, token = null) {
     throw new Error("SESSION_EXPIRED");
   }
   if (!r.ok) {
-    // A signed-in profile hitting 403 means the server-side session is gone
-    // (a valid lender is never forbidden) — treat as expired, not as an error.
-    if (r.status === 403 && hasProfile()) {
-      flagExpired();
-      throw new Error("SESSION_EXPIRED");
-    }
     let msg = r.statusText;
     try {
       const body = await r.json();

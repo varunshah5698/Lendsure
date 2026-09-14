@@ -335,6 +335,8 @@ LS_MIGRATIONS = [
      "ALTER TABLE ls_audit ADD COLUMN prev_hash TEXT DEFAULT '';"),
     ("audit.chain_hash_col",
      "ALTER TABLE ls_audit ADD COLUMN chain_hash TEXT DEFAULT '';"),
+    ("users.phone",
+     "ALTER TABLE users ADD COLUMN phone TEXT DEFAULT '';"),
     ("api_keys.expiry_scopes",
      "ALTER TABLE ls_api_keys ADD COLUMN expires_at TEXT DEFAULT '';"
      "ALTER TABLE ls_api_keys ADD COLUMN scopes TEXT DEFAULT 'read';"
