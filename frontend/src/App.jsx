@@ -9,7 +9,6 @@ import ScrollTop from "./components/ui/ScrollTop";
 import ErrorBoundary from "./components/ui/ErrorBoundary";
 import Landing from "./pages/Landing";
 import Auth from "./pages/Auth";
-import VerifyOtp from "./pages/VerifyOtp";
 import Dashboard from "./pages/Dashboard";
 import Borrowers from "./pages/Borrowers";
 import BorrowerDetails from "./pages/BorrowerDetails";
@@ -114,7 +113,6 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/auth" element={<Auth />} />
-            <Route path="/verify-otp" element={<VerifyOtp />} />
             <Route path="/grievance" element={<Grievance />} />
             <Route path="/grievance/track" element={<GrievanceTrack />} />
             <Route path="/*" element={<RequireAuth><AppLayout /></RequireAuth>} />
