@@ -50,7 +50,7 @@ def now() -> str:
 PROVIDERS = {
     "groq": {
         "base": "https://api.groq.com/openai/v1",
-        "model": "llama-3.3-70b-versatile",
+        "model": "openai/gpt-oss-120b",
     },
     "cerebras": {
         "base": "https://api.cerebras.ai/v1",
@@ -88,17 +88,21 @@ def _post_json(url: str, payload: dict, api_key: str, timeout: int) -> dict:
     req = urllib.request.Request(
         url, data=data,
         headers={"Content-Type": "application/json",
-                 "Authorization": f"Bearer {api_key}"},
+                 "Authorization": f"Bearer {api_key}",
+                 # Identified UA: bare urllib gets challenged by provider WAFs.
+                 "User-Agent": "LendSure-Assistant/1.0"},
         method="POST")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read().decode("utf-8", "replace"))
     except urllib.error.HTTPError as e:
         try:
-            detail = e.read().decode("utf-8", "replace")[:500]
+            detail = e.read().decode("utf-8", "replace")[:300]
         except Exception:
             detail = ""
         print(f"[assistant] provider HTTP {e.code}: {detail}", flush=True)
+        if e.code == 429:
+            raise HTTPException(429, "AI provider is busy right now — wait a minute and ask again.")
         raise HTTPException(502, "AI provider error. Try again in a moment.")
     except Exception as e:
         print(f"[assistant] provider call failed: {type(e).__name__}", flush=True)
@@ -165,7 +169,7 @@ def _tool_specs() -> list:
     return [
         {"type": "function", "function": {
             "name": "search_borrowers",
-            "description": "Find borrowers by id, name or city fragment, with optional city and risk filters. Use for 'show me borrowers', 'highest-risk borrowers', 'borrowers in my city'.",
+            "description": "Find borrowers by id/name/city text, with optional city and risk filters.",
             "parameters": obj({
                 "q": {"type": "string", "description": "Free text: id, name or city"},
                 "city": {"type": "string", "description": "Exact city, or empty for officer's own city"},
@@ -173,64 +177,64 @@ def _tool_specs() -> list:
                 "limit": {"type": "integer", "minimum": 1, "maximum": 20}})}} ,
         {"type": "function", "function": {
             "name": "borrower_detail",
-            "description": "Full profile of one borrower: identity, income, debts, history, verification. Never invent these fields.",
+            "description": "Full profile of one borrower. Never invent fields.",
             "parameters": obj({"borrower_id": {"type": "string"}}, ["borrower_id"])}},
         {"type": "function", "function": {
             "name": "borrower_analysis",
-            "description": "Latest trust/risk/fraud analysis of a borrower: scores, levels, decision, terms, confidence.",
+            "description": "Latest trust/risk/fraud analysis: scores, decision, terms.",
             "parameters": obj({"borrower_id": {"type": "string"}}, ["borrower_id"])}},
         {"type": "function", "function": {
             "name": "ml_predict",
-            "description": "Trained ML default prediction for a borrower: default probability, risk score 0-100, category Low/Medium/High/Critical, per-factor drivers with directions, recovery priority. The ONLY source of ML numbers — always call it before quoting any probability or score.",
+            "description": "Trained ML default prediction: probability, score, category, drivers, priority. ONLY source of ML numbers.",
             "parameters": obj({"borrower_id": {"type": "string"}}, ["borrower_id"])}},
         {"type": "function", "function": {
             "name": "portfolio_stats",
-            "description": "Portfolio totals: borrower count, risk mix, fraud count, average trust and confidence.",
+            "description": "Portfolio totals: counts, risk mix, fraud count, averages.",
             "parameters": S}},
         {"type": "function", "function": {
             "name": "early_warnings",
-            "description": "Borrowers needing attention now: HIGH fraud or HIGH risk on their latest analysis. Input for daily prioritization.",
+            "description": "Borrowers with HIGH fraud or HIGH risk now. Use for prioritization.",
             "parameters": obj({"limit": {"type": "integer", "minimum": 1, "maximum": 20}})}},
         {"type": "function", "function": {
             "name": "list_loans",
-            "description": "Loans with status filter and optional borrower. Never visible to guests.",
+            "description": "Loans by status/borrower. Lenders only.",
             "parameters": obj({
                 "status": {"type": "string", "enum": ["", "ACTIVE", "CLOSED", "DEFAULTED"]},
                 "borrower_id": {"type": "string"},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 20}})}},
         {"type": "function", "function": {
             "name": "loan_detail",
-            "description": "One loan: principal, rate, schedule state, repayments, outstanding. Never visible to guests.",
+            "description": "One loan with repayments and outstanding. Lenders only.",
             "parameters": obj({"loan_id": {"type": "integer"}}, ["loan_id"])}},
         {"type": "function", "function": {
             "name": "recovery_cases",
-            "description": "Recovery/investigation cases with status, assignee, city, transfer state. Never visible to guests.",
+            "description": "Recovery cases with status/assignee/city. Lenders only.",
             "parameters": obj({
                 "status": {"type": "string", "enum": ["", "OPEN", "IN_PROGRESS", "TRANSFER_REQUESTED", "TRANSFERRED", "RESOLVED", "CLOSED"]},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 20}})}},
         {"type": "function", "function": {
             "name": "case_transfers",
-            "description": "Cross-city transfer requests and their review status. Never visible to guests.",
+            "description": "Cross-city transfer requests. Lenders only.",
             "parameters": obj({
                 "status": {"type": "string", "enum": ["", "REQUESTED", "APPROVED", "REJECTED", "TRANSFERRED"]},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 20}})}},
         {"type": "function", "function": {
             "name": "officers",
-            "description": "Recovery officers and their assigned cities. Never visible to guests.",
+            "description": "Recovery officers and cities. Lenders only.",
             "parameters": obj({"city": {"type": "string"}})}},
         {"type": "function", "function": {
             "name": "grievances",
-            "description": "Borrower complaints with status and assignee. Overdue = OPEN or ESCALATED older than 3 days. Never visible to guests.",
+            "description": "Borrower complaints. Overdue = OPEN/ESCALATED older than 3 days. Lenders only.",
             "parameters": obj({
                 "status": {"type": "string", "enum": ["", "OPEN", "IN_REVIEW", "RESOLVED", "ESCALATED", "CLOSED"]},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 20}})}},
         {"type": "function", "function": {
             "name": "territory_summary",
-            "description": "The caller's territory: assigned city plus borrower/case counts in it. Falls back to whole portfolio for non-officers.",
+            "description": "Caller territory: city plus borrower/case counts.",
             "parameters": S}},
         {"type": "function", "function": {
             "name": "system_policy",
-            "description": "Live risk thresholds, interest bands and review rules from system config. Admin eyes only.",
+            "description": "Live risk thresholds and review rules. Admins only.",
             "parameters": S}},
     ]
 
