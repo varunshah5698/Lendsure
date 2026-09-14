@@ -842,12 +842,15 @@ EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 
 
 def _smtp_configured() -> bool:
-    return bool(os.environ.get("LENDSURE_SMTP_USER") and os.environ.get("LENDSURE_SMTP_APP_PASSWORD"))
+    return bool("".join(os.environ.get("LENDSURE_SMTP_USER", "").split())
+                and "".join(os.environ.get("LENDSURE_SMTP_APP_PASSWORD", "").split()))
 
 
 def send_email_otp(to_email: str, code: str, purpose: str) -> bool:
-    user = os.environ.get("LENDSURE_SMTP_USER", "")
-    pwd = os.environ.get("LENDSURE_SMTP_APP_PASSWORD", "")
+    # App passwords are displayed in spaced groups — strip all whitespace
+    # so a pasted-with-spaces password still authenticates.
+    user = "".join(os.environ.get("LENDSURE_SMTP_USER", "").split())
+    pwd = "".join(os.environ.get("LENDSURE_SMTP_APP_PASSWORD", "").split())
     host = os.environ.get("LENDSURE_SMTP_HOST", "smtp.gmail.com")
     port = int(os.environ.get("LENDSURE_SMTP_PORT", "587"))
     if not user or not pwd:
