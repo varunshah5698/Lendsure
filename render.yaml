@@ -9,10 +9,11 @@ services:
     plan: free
     healthCheckPath: /api/health
     envVars:
-      # Production default: demo OTP OFF (codes go by email via SMTP below).
+      # Demo OTP shown on screen (demo mode). For real production, set to
+      # "0" and fill the SMTP/Twilio vars below — codes then go by email/SMS.
       # The dashboard value on an existing service wins over this file.
       - key: LENDSURE_DEMO_OTP
-        value: "0"
+        value: "1"
       # Comma-separated allowed origins (same-origin serving needs none of
       # these, but set your public URL here if you ever split frontend/API).
       - key: LENDSURE_CORS_ORIGINS
