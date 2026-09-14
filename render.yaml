@@ -22,3 +22,13 @@ services:
         sync: false
       - key: LENDSURE_SMTP_APP_PASSWORD
         sync: false
+      # Real SMS OTP via Twilio Verify (required now that demo OTP is off).
+      # Values are entered in the Render dashboard, never in git.
+      - key: LENDSURE_SMS_PROVIDER
+        value: "twilio"
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_VERIFY_SERVICE_SID
+        sync: false
