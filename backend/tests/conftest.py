@@ -12,6 +12,9 @@ os.environ.setdefault("LENDSURE_DEMO_OTP", "1")
 # configured: tests must be hermetic (no network, no real emails sent).
 os.environ["LENDSURE_SMTP_USER"] = ""
 os.environ["LENDSURE_SMTP_APP_PASSWORD"] = ""
+# Same for Twilio: app.py auto-loads backend/.env, which may hold real
+# credentials on a dev machine. Tests must never touch live SMS.
+os.environ["LENDSURE_SMS_PROVIDER"] = "none"
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
