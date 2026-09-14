@@ -245,3 +245,42 @@ def test_expired_otp_rejected(client):
                     json={"phone": "9000000002", "otp": "123456"})
     assert r.status_code == 400
     assert "expired" in r.json()["detail"].lower()
+
+
+
+def test_phone_otp_uses_live_sms_without_echo(client, monkeypatch):
+    import app as app_module
+
+    monkeypatch.setattr(app_module, "DEMO_OTP", False)
+    monkeypatch.setenv("LENDSURE_SMS_PROVIDER", "twilio")
+    monkeypatch.setenv("TWILIO_ACCOUNT_SID", "ACtest")
+    monkeypatch.setenv("TWILIO_AUTH_TOKEN", "token")
+    monkeypatch.setenv("TWILIO_VERIFY_SERVICE_SID", "VAtest")
+    sent = []
+    monkeypatch.setattr(app_module, "send_sms_otp", lambda phone: sent.append(phone) or True)
+    monkeypatch.setattr(app_module, "check_sms_otp", lambda phone, code: code == "123456")
+
+    r = client.post("/api/auth/request-otp", json={"phone": "9000000010"})
+    assert r.status_code == 200
+    assert "demo_otp" not in r.json()
+    assert sent == ["9000000010"]
+
+    r = client.post("/api/auth/verify-otp",
+                    json={"phone": "9000000010", "otp": "123456"})
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+
+
+def test_phone_otp_fails_closed_when_sms_provider_fails(client, monkeypatch):
+    import app as app_module
+
+    monkeypatch.setattr(app_module, "DEMO_OTP", False)
+    monkeypatch.setenv("LENDSURE_SMS_PROVIDER", "twilio")
+    monkeypatch.setenv("TWILIO_ACCOUNT_SID", "ACtest")
+    monkeypatch.setenv("TWILIO_AUTH_TOKEN", "token")
+    monkeypatch.setenv("TWILIO_VERIFY_SERVICE_SID", "VAtest")
+    monkeypatch.setattr(app_module, "send_sms_otp", lambda phone: False)
+
+    r = client.post("/api/auth/request-otp", json={"phone": "9000000011"})
+    assert r.status_code == 503
+    assert "demo_otp" not in r.json()
