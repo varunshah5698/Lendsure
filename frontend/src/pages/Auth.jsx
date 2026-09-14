@@ -252,7 +252,7 @@ export default function Auth() {
             <Button variant="primary" className="auth-btn" onClick={handleSendOtp} disabled={loading}>
               {loading ? "Sending…" : "Send OTP →"}
             </Button>
-            <p className="auth-hint">Demo build — the OTP appears on screen, no SMS needed.</p>
+            <p className="auth-hint">We’ll send a 6-digit OTP by SMS. It expires in 5 minutes.</p>
           </div>
         )}
 
