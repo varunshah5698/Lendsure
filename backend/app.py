@@ -4,6 +4,7 @@ Backend: FastAPI + SQLite (stdlib) + explainable rule-based AI engine.
 Every decision returns score breakdown + evidence + confidence + audit trail.
 Run: pip install -r requirements.txt && python app.py  (serves API + dashboard on :8000)
 """
+import base64
 import hashlib
 import json
 import os
@@ -17,6 +18,9 @@ from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import Request as UrlRequest, urlopen
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -472,14 +476,65 @@ class GuestIn(BaseModel):
     name: str = "Guest"
 
 
-# Demo mode: OTP is returned in the API response + server log so the flow
-# works without an SMS provider. Set False when a real SMS gateway is wired.
-# Demo mode: OTP is returned in the API response + server log so the flow
-# works without an SMS provider. Set LENDSURE_DEMO_OTP=0 + wire an SMS gateway
-# for production. OTP_TTL_MIN configurable via LENDSURE_OTP_TTL_MIN.
-DEMO_OTP = os.environ.get("LENDSURE_DEMO_OTP", "1") == "1"
-OTP_TTL_MIN = int(os.environ.get("LENDSURE_OTP_TTL_MIN", "5"))
-OTP_TTL_MIN = max(1, OTP_TTL_MIN)
+# Phone OTP delivery. In production, Twilio Verify generates and validates the
+# code server-side. Demo mode is opt-in and must never be enabled in production.
+DEMO_OTP = os.environ.get("LENDSURE_DEMO_OTP", "0") == "1"
+OTP_TTL_MIN = max(1, int(os.environ.get("LENDSURE_OTP_TTL_MIN", "5")))
+TWILIO_OTP_MARKER = "__twilio_verify__"
+
+def _twilio_configured() -> bool:
+    return (
+        os.environ.get("LENDSURE_SMS_PROVIDER", "twilio").strip().lower() == "twilio"
+        and bool(os.environ.get("TWILIO_ACCOUNT_SID", "").strip())
+        and bool(os.environ.get("TWILIO_AUTH_TOKEN", "").strip())
+        and bool(os.environ.get("TWILIO_VERIFY_SERVICE_SID", "").strip())
+    )
+
+def _phone_e164(phone: str) -> str:
+    return f"+91{phone}"
+
+def _twilio_verify_post(resource: str, fields: dict[str, str]) -> Optional[dict]:
+    """Call Twilio Verify without exposing credentials or OTPs to the client."""
+    account_sid = os.environ.get("TWILIO_ACCOUNT_SID", "").strip()
+    auth_token = os.environ.get("TWILIO_AUTH_TOKEN", "").strip()
+    service_sid = os.environ.get("TWILIO_VERIFY_SERVICE_SID", "").strip()
+    if not account_sid or not auth_token or not service_sid:
+        return None
+    auth = base64.b64encode(f"{account_sid}:{auth_token}".encode()).decode()
+    request = UrlRequest(
+        f"https://verify.twilio.com/v2/Services/{service_sid}/{resource}",
+        data=urlencode(fields).encode(),
+        headers={
+            "Authorization": f"Basic {auth}",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=20) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        try:
+            detail = json.loads(exc.read().decode("utf-8")).get("message", "provider rejected request")
+        except Exception:
+            detail = "provider rejected request"
+        print(f"[Twilio] Verify {resource} failed ({exc.code}): {detail}", flush=True)
+    except (URLError, TimeoutError, OSError, ValueError) as exc:
+        print(f"[Twilio] Verify {resource} unavailable: {exc}", flush=True)
+    return None
+
+def send_sms_otp(phone: str) -> bool:
+    result = _twilio_verify_post("Verifications", {"To": _phone_e164(phone), "Channel": "sms"})
+    return bool(result and result.get("status") in {"pending", "approved"})
+
+def check_sms_otp(phone: str, code: str) -> Optional[bool]:
+    result = _twilio_verify_post(
+        "VerificationCheck", {"To": _phone_e164(phone), "Code": code}
+    )
+    if result is None:
+        return None
+    return result.get("status") == "approved"
 
 # ---------------- Persistent sessions + inactivity timeout ----------------
 # Browser sessions live in an HttpOnly SameSite cookie; the server owns all
@@ -678,22 +733,54 @@ def request_otp(payload: OtpRequestIn):
     phone = payload.phone.strip()
     if not re.match(r"^\d{10}$", phone):
         raise HTTPException(400, "Enter a valid 10-digit mobile number")
-    # No SMS gateway is wired: in production (demo off) there is no channel
-    # to deliver a phone code on. Fail securely instead of pretending to send.
-    if not DEMO_OTP:
-        raise HTTPException(503, "SMS delivery is not configured on this server. Use email sign-in.")
-    from lendsure.otp import issue as _otp_issue, code_length as _otp_len
+    live_sms = _twilio_configured()
+    if not live_sms and not DEMO_OTP:
+        raise HTTPException(503, "SMS delivery is not configured on this server.")
     conn = db()
+    otp_id = None
     try:
-        code = _otp_issue(conn, "phone", phone, ttl_min=OTP_TTL_MIN)
+        cur = conn.cursor()
+        recent = cur.execute(
+            "SELECT COUNT(*) c FROM otps WHERE phone=? AND created_at > datetime('now','-1 hour')",
+            (phone,),
+        ).fetchone()["c"]
+        if recent >= 5:
+            raise HTTPException(429, "Too many OTP requests. Try again in an hour.")
+        last = cur.execute(
+            "SELECT created_at FROM otps WHERE phone=? ORDER BY id DESC LIMIT 1", (phone,)
+        ).fetchone()
+        if last and last["created_at"] > (_now() - timedelta(seconds=60)).isoformat():
+            raise HTTPException(429, "A code was just sent — wait a minute before requesting another.")
+        code = TWILIO_OTP_MARKER if live_sms else f"{secrets.randbelow(900000) + 100000:06d}"
+        now = _now()
+        cur.execute(
+            "DELETE FROM otps WHERE phone=?", (phone,)
+        )
+        cur.execute(
+            "INSERT INTO otps (phone, code, attempts, created_at, expires_at) VALUES (?,?,?,?,?)",
+            (phone, code, 0, now.isoformat(), (now + timedelta(minutes=OTP_TTL_MIN)).isoformat()),
+        )
+        otp_id = cur.lastrowid
+        conn.commit()
     finally:
         conn.close()
-    # OTP codes reach logs ONLY in explicit demo-debug mode — never in production.
-    if DEMO_OTP and os.environ.get("LENDSURE_LOG_CODES") == "1":
+    if live_sms and not send_sms_otp(phone):
+        conn = db()
+        try:
+            conn.execute("DELETE FROM otps WHERE id=?", (otp_id,))
+            conn.commit()
+        finally:
+            conn.close()
+        raise HTTPException(503, "We could not send the SMS right now. Please try again.")
+    if DEMO_OTP and not live_sms and os.environ.get("LENDSURE_LOG_CODES") == "1":
         print(f"[OTP] {phone} -> {code} (valid {OTP_TTL_MIN} min)", flush=True)
-    resp: dict[str, Any] = {"ok": True, "message": f"OTP sent to +91 {phone}", "expires_in_sec": OTP_TTL_MIN * 60,
-                            "otp_len": _otp_len()}
-    if DEMO_OTP:
+    resp: dict[str, Any] = {
+        "ok": True,
+        "message": f"OTP sent to +91 {phone}",
+        "expires_in_sec": OTP_TTL_MIN * 60,
+        "retry_after_sec": 60,
+    }
+    if DEMO_OTP and not live_sms:
         resp["demo_otp"] = code
         resp["message"] += " (demo mode: code shown on screen)"
     return resp
@@ -703,14 +790,33 @@ def request_otp(payload: OtpRequestIn):
 def verify_otp(payload: OtpVerifyIn, request: Request, response: Response):
     phone = payload.phone.strip()
     code = payload.otp.strip()
-    if not re.match(r"^\d{10}$", phone):
-        raise HTTPException(400, "Enter a valid 10-digit mobile number")
-    if not code.isdigit() or not (4 <= len(code) <= 8):
-        raise HTTPException(400, "Enter the code digits")
-    from lendsure.otp import check as _otp_check
+    if not re.match(r"^\d{10}$", phone) or not re.match(r"^\d{6}$", code):
+        raise HTTPException(400, "Invalid phone or OTP format")
     conn = db()
     try:
-        _otp_check(conn, "phone", phone, code)
+        cur = conn.cursor()
+        row = cur.execute(
+            "SELECT * FROM otps WHERE phone=? ORDER BY id DESC LIMIT 1", (phone,)
+        ).fetchone()
+        if not row or row["expires_at"] <= _now().isoformat():
+            raise HTTPException(400, "OTP expired or not found. Request a new one.")
+        if row["attempts"] >= 5:
+            cur.execute("DELETE FROM otps WHERE id=?", (row["id"],))
+            conn.commit()
+            raise HTTPException(400, "Too many wrong attempts. Request a new OTP.")
+        if row["code"] == TWILIO_OTP_MARKER:
+            verified = check_sms_otp(phone, code)
+            if verified is None:
+                raise HTTPException(503, "SMS verification is temporarily unavailable. Please try again.")
+        else:
+            verified = secrets.compare_digest(row["code"], code)
+        if not verified:
+            cur.execute("UPDATE otps SET attempts = attempts + 1 WHERE id=?", (row["id"],))
+            conn.commit()
+            remaining = 5 - row["attempts"] - 1
+            raise HTTPException(400, f"Wrong OTP. {remaining} attempt(s) left.")
+        cur.execute("DELETE FROM otps WHERE id=?", (row["id"],))
+        conn.commit()
     finally:
         conn.close()
     name = payload.name.strip() or f"Lender {phone[-4:]}"
