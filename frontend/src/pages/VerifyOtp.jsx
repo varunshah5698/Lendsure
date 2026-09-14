@@ -20,7 +20,7 @@ export default function VerifyOtp() {
   const [demoOtp, setDemoOtp] = useState(initialDemo);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [timer, setTimer] = useState(45);
+  const [timer, setTimer] = useState(60);
   const otpRefs = useRef([]);
 
   useEffect(() => {
@@ -69,7 +69,7 @@ export default function VerifyOtp() {
         r = await auth.resendCode(email);
       }
       if (r && r.demo_otp) setDemoOtp(r.demo_otp);
-      setTimer(45);
+      setTimer(60);
       setTimeout(() => otpRefs.current[0]?.focus(), 100);
     } catch (e) { setError(e.message); }
     setLoading(false);
@@ -98,7 +98,9 @@ export default function VerifyOtp() {
         <p className="auth-subtitle">
           {kind === "login"
             ? "New device — we sent a code to your email"
-            : `We sent a ${N}-digit code — enter it below`}
+            : kind === "phone"
+              ? `We sent a ${N}-digit code by SMS`
+              : `We sent a ${N}-digit code — enter it below`}
         </p>
 
         <div className="auth-form fade-in">
