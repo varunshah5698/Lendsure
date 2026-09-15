@@ -56,7 +56,9 @@ _load_dotenv()
 from lendsure.schema import DDL as LS_DDL, LIFECYCLE_DDL, LS_MIGRATIONS
 
 BASE_DIR = Path(__file__).parent
-LIVE_DB_PATH = BASE_DIR / "lending.db"
+RUNTIME_ENV = os.environ.get("LENDSURE_ENV", "development").strip().lower()
+_configured_db_path = os.environ.get("LENDSURE_DB_PATH", "").strip()
+LIVE_DB_PATH = Path(_configured_db_path).expanduser() if _configured_db_path else BASE_DIR / "lending.db"
 SEED_DB_PATH = BASE_DIR / "seed" / "lending.db"
 
 
@@ -70,6 +72,10 @@ def _resolve_db_path() -> Path:
     instead, seeded from the live-or-seed file on cold boot.
     """
     live = LIVE_DB_PATH
+    try:
+        live.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise RuntimeError(f"Cannot create database directory {live.parent}: {exc}") from exc
     if not live.exists() and SEED_DB_PATH.exists():
         try:
             shutil.copyfile(SEED_DB_PATH, live)
@@ -95,7 +101,7 @@ STATIC_DIR = BASE_DIR / "static"
 CORS_ORIGINS = [o.strip() for o in os.environ.get(
     "LENDSURE_CORS_ORIGINS",
     "http://127.0.0.1:8000,http://localhost:8000,http://localhost:5173").split(",") if o.strip()]
-MAX_BODY_BYTES = int(os.environ.get("LENDSURE_MAX_BODY_BYTES", "1000000"))
+MAX_BODY_BYTES = max(1024, int(os.environ.get("LENDSURE_MAX_BODY_BYTES", "1000000")))
 
 app = FastAPI(title="LendSure API", version="2.0.0")
 app.add_middleware(
@@ -478,7 +484,7 @@ class GuestIn(BaseModel):
 # Verify Service "time to live" at or above OTP_TTL_MIN, or users will see
 # local expiry for still-valid Twilio codes. Numbers are India (+91) only —
 # the 10-digit validation upstream guarantees that shape.
-DEMO_OTP = os.environ.get("LENDSURE_DEMO_OTP", "1") == "1"
+DEMO_OTP = os.environ.get("LENDSURE_DEMO_OTP", "0") == "1"
 OTP_TTL_MIN = max(1, int(os.environ.get("LENDSURE_OTP_TTL_MIN", "5")))
 TWILIO_OTP_MARKER = "__twilio_verify__"
 
@@ -550,11 +556,26 @@ IDLE_TIMEOUT_SEC = max(30, IDLE_TIMEOUT_SEC)  # floor so tests can shrink it
 TOUCH_THROTTLE_SEC = 30  # refresh last_active at most this often (write thrift)
 
 
-# ---------------- API ----------------
+def _validate_runtime_config() -> None:
+    """Reject unsafe production settings before the service accepts traffic."""
+    if RUNTIME_ENV not in {"development", "test", "staging", "production"}:
+        raise RuntimeError("LENDSURE_ENV must be development, test, staging, or production")
+    if RUNTIME_ENV == "production" and DEMO_OTP:
+        raise RuntimeError("LENDSURE_DEMO_OTP=1 is not allowed when LENDSURE_ENV=production")
+    if RUNTIME_ENV == "production" and "*" in CORS_ORIGINS:
+        raise RuntimeError("Wildcard CORS is not allowed when LENDSURE_ENV=production")
+    if RUNTIME_ENV == "production" and not LIVE_DB_PATH.is_absolute():
+        raise RuntimeError("LENDSURE_DB_PATH must be an absolute path in production")
 
+
+_validate_runtime_config()
+
+
+# ---------------- API ----------------
 @app.get("/api/health")
 def health():
-    return {"ok": True, "time": datetime.utcnow().isoformat()}
+    return {"ok": True, "service": "lendsure-api", "version": app.version,
+            "environment": RUNTIME_ENV, "time": datetime.utcnow().isoformat()}
 
 
 # ---------------- Auth (OTP + guest) ----------------

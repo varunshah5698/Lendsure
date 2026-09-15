@@ -15,7 +15,9 @@ RUN npx vite build --outDir /app-static
 # ---------- Stage 2: runtime ----------
 FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    LENDSURE_ENV=production \
+    LENDSURE_DEMO_OTP=0
 WORKDIR /srv/backend
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
@@ -23,5 +25,7 @@ COPY backend/ ./
 # Fresh production frontend (overwrites the dev build in backend/static).
 COPY --from=web /app-static ./static
 EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD python -c "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/api/health', timeout=3)"
 # Render (and most PaaS) inject $PORT; default to 8000 locally.
 CMD ["sh", "-c", "python -m uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000}"]

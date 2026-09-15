@@ -6,14 +6,21 @@ services:
     runtime: docker
     dockerContext: .
     dockerfilePath: ./Dockerfile
-    plan: free
+    plan: starter
+    disk:
+      name: lendsure-data
+      mountPath: /var/data
+      sizeGB: 1
     healthCheckPath: /api/health
     envVars:
-      # Demo OTP shown on screen (demo mode). For real production, set to
-      # "0" and fill the SMTP/Twilio vars below — codes then go by email/SMS.
-      # The dashboard value on an existing service wins over this file.
+      # Never expose OTPs in production. Twilio Verify credentials are entered
+      # as protected dashboard variables below.
+      - key: LENDSURE_ENV
+        value: "production"
       - key: LENDSURE_DEMO_OTP
-        value: "1"
+        value: "0"
+      - key: LENDSURE_DB_PATH
+        value: "/var/data/lending.db"
       # Comma-separated allowed origins (same-origin serving needs none of
       # these, but set your public URL here if you ever split frontend/API).
       - key: LENDSURE_CORS_ORIGINS
