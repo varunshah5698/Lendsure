@@ -8,9 +8,9 @@ from memory: every factual claim must come from a tool call below, and every
 tool re-checks the caller's role exactly like the REST endpoints do
 (guests get the same scrubbed views they get from the API).
 
-Providers: one OpenAI-compatible client covers Groq (primary), Cerebras and
-Gemini — only the base URL + default model differ. Switch with env vars;
-no code changes, no frontend exposure, no new dependencies (stdlib only).
+Providers: one OpenAI-compatible client covers Groq (primary), Cerebras,
+Gemini and DeepSeek — only the base URL + default model differ. Switch with
+env vars; no code changes, no frontend exposure, no new dependencies (stdlib only).
 
 The ML model owns every NUMBER (pd, score, band via ml_predict). The LLM
 owns only the WORDS: it explains drivers in plain language and prioritizes
@@ -68,6 +68,14 @@ PROVIDERS = {
         "base": "https://generativelanguage.googleapis.com/v1beta/openai/",
         "model": "gemini-2.0-flash",
     },
+    "deepseek": {
+        # OpenAI-compatible: POST {base}/chat/completions with Bearer sk-...
+        # Default is the general chat model (tool-calling capable).
+        # Override per deploy with LLM_MODEL=deepseek-chat | deepseek-reasoner
+        # (reasoner does NOT support tool calls — keep chat for this assistant).
+        "base": "https://api.deepseek.com/v1",
+        "model": "deepseek-chat",
+    },
 }
 
 MAX_ITERS = 6
@@ -113,6 +121,12 @@ def _post_json(url: str, payload: dict, api_key: str, timeout: int) -> dict:
         print(f"[assistant] provider HTTP {e.code}: {detail}", flush=True)
         if e.code == 429:
             raise HTTPException(429, "AI provider is busy right now — wait a minute and ask again.")
+        if e.code == 402:
+            raise HTTPException(402, "AI provider has no credit (DeepSeek insufficient balance). "
+                                     "Top up at platform.deepseek.com, or switch LLM_PROVIDER, then try again.")
+        if e.code in (401, 403):
+            raise HTTPException(502, "AI provider rejected the API key. Check LLM_API_KEY for the "
+                                     "configured provider, then try again.")
         raise HTTPException(502, "AI provider error. Try again in a moment.")
     except Exception as e:
         print(f"[assistant] provider call failed: {type(e).__name__}", flush=True)

@@ -13,7 +13,7 @@ def test_status_reports_unconfigured(client, monkeypatch):
     assert r.status_code == 200
     d = r.json()
     assert d["configured"] is False
-    assert d["provider"] in ("openai", "groq", "cerebras", "gemini")
+    assert d["provider"] in ("openai", "groq", "cerebras", "gemini", "deepseek")
     assert "key" not in str(d).lower().replace("turkey", "")
 
 

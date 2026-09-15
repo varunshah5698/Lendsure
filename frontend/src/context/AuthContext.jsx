@@ -104,7 +104,7 @@ export const isGuest = (session) => !session || session.role === "guest";
 
 export function guardLender(session, toast) {
   if (isGuest(session)) {
-    toast?.error?.("Guests are read-only — sign in with Phone OTP for lender actions");
+    toast?.error?.("Guests are read-only — sign in as a lender for these actions");
     return false;
   }
   return true;

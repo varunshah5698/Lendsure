@@ -35,8 +35,13 @@ import "./App.css";
 
 function RequireAuth({ children }) {
   const { session, loading } = useAuth();
+  const location = useLocation();
   if (loading) return <div className="loading-screen"><div className="loading-spinner" /></div>;
-  if (!session) return <Navigate to="/auth" replace />;
+  if (!session) {
+    // Remember where they were headed so /auth can say sign-in is required.
+    try { sessionStorage.setItem("ls_login_required", location.pathname); } catch {}
+    return <Navigate to="/auth" replace />;
+  }
   return children;
 }
 
