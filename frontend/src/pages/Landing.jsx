@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
-import FloatingCards from "../components/landing/FloatingCards";
 import SafeRiskCore from "../components/landing/SafeRiskCore";
 import SafeApprovalWave from "../components/landing/SafeApprovalWave";
 import Logo from "../components/ui/Logo";
@@ -91,7 +90,6 @@ function Hero() {
         <div className="lp-hero-scene-wrap">
           <SafeRiskCore className="lp-hero-scene" />
         </div>
-        <FloatingCards />
       </div>
     </section>
   );
