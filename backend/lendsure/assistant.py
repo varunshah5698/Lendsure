@@ -48,6 +48,11 @@ def now() -> str:
 # ---------------------------------------------------------------- providers
 
 PROVIDERS = {
+    "openai": {
+        # OpenAI-compatible gateway; override with OPENAI_API_BASE when needed.
+        "base": "https://api.openai.com/v1",
+        "model": "gpt-5-mini",
+    },
     "groq": {
         "base": "https://api.groq.com/openai/v1",
         # 120b is stronger but its free-tier token budget cannot fit a
@@ -80,7 +85,9 @@ def llm_config() -> dict:
         provider = "groq"
     return {
         "provider": provider,
-        "base": PROVIDERS[provider]["base"],
+        "base": (os.environ.get("OPENAI_API_BASE") or "").strip()
+                if provider == "openai" and (os.environ.get("OPENAI_API_BASE") or "").strip()
+                else PROVIDERS[provider]["base"],
         "model": (os.environ.get("LLM_MODEL") or "").strip() or PROVIDERS[provider]["model"],
         "configured": bool((os.environ.get("LLM_API_KEY") or "").strip()),
     }
@@ -124,7 +131,7 @@ def _chat_complete(messages: list, tools: list) -> dict:
         "model": cfg["model"],
         "messages": messages,
         "temperature": 0.2,
-        "max_tokens": 640,
+        "max_tokens": 1200,
     }
     if tools:
         body["tools"] = tools
@@ -509,11 +516,27 @@ def run_chat(message: str, history: list, session: Optional[dict], role: str) ->
         messages.append({"role": "user", "content": message})
         tools = _tool_specs()
         used: list = []
+        evidence: list[dict] = []
         for _ in range(MAX_ITERS):
             answer = _chat_complete(messages, tools)
             calls = answer.get("tool_calls") or []
             if not calls:
-                return {"reply": (answer.get("content") or "").strip() or
+                content = (answer.get("content") or "").strip()
+                if not content and used:
+                    # Some reasoning models return an empty content field after
+                    # a tool round. Ask for a final text-only synthesis rather
+                    # than showing a misleading failure message.
+                    synthesis = [
+                        messages[0],
+                        {"role": "user", "content": message},
+                        {"role": "user", "content":
+                         "Live tool evidence (use only this evidence):\n" +
+                         json.dumps(evidence, default=str)[:10000] +
+                         "\n\nAnswer the original question clearly and briefly."},
+                    ]
+                    final = _chat_complete(synthesis, [])
+                    content = (final.get("content") or "").strip()
+                return {"reply": content or
                         "I could not compose an answer from the data I found.",
                         "tools_used": used}
             messages.append({k: answer.get(k) for k in ("role", "content", "tool_calls") if answer.get(k) is not None} |
@@ -532,6 +555,7 @@ def run_chat(message: str, history: list, session: Optional[dict], role: str) ->
                 except Exception:
                     result = {"error": "tool failed"}
                 used.append(tname)
+                evidence.append({"tool": tname, "result": result})
                 messages.append({"role": "tool", "tool_call_id": call.get("id", ""),
                                  "content": json.dumps(result, default=str)[:3000]})
         return {"reply": ("I gathered data from: " + ", ".join(dict.fromkeys(used)) +

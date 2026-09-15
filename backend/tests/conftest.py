@@ -7,7 +7,9 @@ guest/lender sessions never leak into each other — exactly like real users.
 import os
 import sys
 
-os.environ.setdefault("LENDSURE_DEMO_OTP", "1")
+# Explicit assignment keeps tests hermetic even when a developer shell or
+# backend/.env has production SMTP settings exported.
+os.environ["LENDSURE_DEMO_OTP"] = "1"
 # Force demo delivery in tests even if the developer machine has real SMTP
 # configured: tests must be hermetic (no network, no real emails sent).
 os.environ["LENDSURE_SMTP_USER"] = ""
